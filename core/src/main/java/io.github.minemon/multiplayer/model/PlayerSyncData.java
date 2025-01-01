@@ -1,10 +1,11 @@
 package io.github.minemon.multiplayer.model;
 
+import io.github.minemon.player.model.PlayerData;
 import lombok.Getter;
 import lombok.Setter;
-import io.github.minemon.player.model.PlayerData;
 
-@Getter @Setter
+@Getter
+@Setter
 public class PlayerSyncData {
     private String username;
     private float x;
@@ -12,7 +13,6 @@ public class PlayerSyncData {
     private boolean running;
     private String direction;
     private boolean moving;
-
     private float animationTime = 0f;
     private float lastUpdateTime = 0f;
     private boolean wasMoving;

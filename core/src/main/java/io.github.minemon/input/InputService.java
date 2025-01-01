@@ -104,7 +104,6 @@ public class InputService extends InputAdapter {
             runPressed = false;
         }
 
-        // ---- FINAL STOP PACKET ----
         if (!upPressed && !downPressed && !leftPressed && !rightPressed) {
             PlayerData pd = playerService.getPlayerData();
             float x = pd.getX();
