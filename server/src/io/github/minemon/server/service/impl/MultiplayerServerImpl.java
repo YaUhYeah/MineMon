@@ -210,21 +210,17 @@ public class MultiplayerServerImpl implements MultiplayerServer {
 
     private void handlePlayerMove(Connection connection, NetworkProtocol.PlayerMoveRequest moveReq) {
         String username = connectionUserMap.get(connection.getID());
-        if (username == null) {
-            log.warn("No user for this connection.");
-            return;
-        }
+        if (username == null) return;
 
         PlayerData pd = worldService.getPlayerData(username);
         if (pd == null) return;
 
         try {
-            pd.setDirection(io.github.minemon.player.model.PlayerDirection.valueOf(
-                moveReq.getDirection().toUpperCase()
-            ));
+            pd.setDirection(PlayerDirection.valueOf(moveReq.getDirection().toUpperCase()));
         } catch (IllegalArgumentException e) {
             log.error("Invalid direction '{}'", moveReq.getDirection());
         }
+
         float oldX = pd.getX();
         float oldY = pd.getY();
 
@@ -235,16 +231,11 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         boolean positionChanged = (oldX != pd.getX() || oldY != pd.getY());
         pd.setMoving(positionChanged);
 
-        pd.setDirection(
-            PlayerDirection.valueOf(moveReq.getDirection().toUpperCase())
-        );
-
-
-
+        // Removed the duplicate pd.setDirection call
         worldService.setPlayerData(pd);
-
         broadcastPlayerStates();
     }
+
 
     private void broadcastPlayerStates() {
         Map<String, PlayerSyncData> states = multiplayerService.getAllPlayerStates();

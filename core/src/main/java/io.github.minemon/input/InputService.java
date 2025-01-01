@@ -1,8 +1,11 @@
 package io.github.minemon.input;
 
 import com.badlogic.gdx.InputAdapter;
+import io.github.minemon.chat.service.ChatService;
 import io.github.minemon.player.model.PlayerDirection;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -15,6 +18,9 @@ public class InputService extends InputAdapter {
     private boolean runPressed;
 
     private PlayerDirection lastPressedDirection = null;
+    @Autowired
+    @Lazy
+    private ChatService chatService;
 
     /**
      * Returns the current direction, favoring the last pressed direction if multiple are pressed.
@@ -22,10 +28,18 @@ public class InputService extends InputAdapter {
     public PlayerDirection getCurrentDirection() {
         if (lastPressedDirection != null) {
             switch (lastPressedDirection) {
-                case UP -> { if (upPressed) return PlayerDirection.UP; }
-                case DOWN -> { if (downPressed) return PlayerDirection.DOWN; }
-                case LEFT -> { if (leftPressed) return PlayerDirection.LEFT; }
-                case RIGHT -> { if (rightPressed) return PlayerDirection.RIGHT; }
+                case UP -> {
+                    if (upPressed) return PlayerDirection.UP;
+                }
+                case DOWN -> {
+                    if (downPressed) return PlayerDirection.DOWN;
+                }
+                case LEFT -> {
+                    if (leftPressed) return PlayerDirection.LEFT;
+                }
+                case RIGHT -> {
+                    if (rightPressed) return PlayerDirection.RIGHT;
+                }
             }
         }
         if (upPressed) return PlayerDirection.UP;
@@ -41,6 +55,9 @@ public class InputService extends InputAdapter {
 
     @Override
     public boolean keyDown(int keycode) {
+        if (chatService.isActive()) {
+            return false;
+        }
         PlayerDirection dir = inputConfig.getDirectionForKey(keycode);
         if (dir != null) {
             switch (dir) {
