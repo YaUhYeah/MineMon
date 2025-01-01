@@ -247,7 +247,7 @@ public class PlayerServiceImpl implements PlayerService {
     public PlayerData getPlayerData() {
         float tileX = playerModel.getPosition().x / TILE_SIZE;
         float tileY = playerModel.getPosition().y / TILE_SIZE;
-        return new PlayerData(username, tileX, tileY);
+        return new PlayerData(username, tileX, tileY,playerModel.getDirection());
     }
 
     @Override

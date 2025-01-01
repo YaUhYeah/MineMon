@@ -227,8 +227,11 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         pd.setX(moveReq.getX());
         pd.setY(moveReq.getY());
         pd.setWantsToRun(moveReq.isRunning());
+        float epsilon = 0.0001f;
+        boolean positionChanged =
+            (Math.abs(oldX - pd.getX()) > epsilon) ||
+                (Math.abs(oldY - pd.getY()) > epsilon);
 
-        boolean positionChanged = (oldX != pd.getX() || oldY != pd.getY());
         pd.setMoving(positionChanged);
 
         // Removed the duplicate pd.setDirection call

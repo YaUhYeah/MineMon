@@ -14,11 +14,12 @@ public class PlayerData {
 
     public PlayerData() {}
 
-    public PlayerData(String username, float x, float y) {
+    public PlayerData(String username, float x, float y, PlayerDirection dir) {
         this.username = username;
         this.x = x;
         this.y = y;
         this.wantsToRun = false;
         this.moving = false;
+        this.direction = dir;
     }
 }
