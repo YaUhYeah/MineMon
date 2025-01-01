@@ -244,7 +244,7 @@ public class GameScreen implements Screen {
             pd != null ? pd.getY() : 0f);
 
         if (pd == null) {
-            pd = new PlayerData(playerName, 0, 0);
+            pd = new PlayerData(playerName, 0, 0,PlayerDirection.DOWN);
             playerService.setPlayerData(pd);
             log.debug("No existing PD => created new at (0,0)");
         } else {
