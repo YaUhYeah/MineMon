@@ -373,10 +373,23 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         client.sendTCP(req);
     }
 
-
     @Override
     public void update(float delta) {
+        for (PlayerSyncData psd : playerStates.values()) {
+            boolean directionChanged = !psd.getDirection().equals(psd.getLastDirection());
+            boolean movementChanged  = (psd.isMoving() != psd.isWasMoving());
+            if (directionChanged || movementChanged) {
+                psd.setAnimationTime(0f);
+            }
+            else if (psd.isMoving()) {
+                psd.setAnimationTime(psd.getAnimationTime() + delta);
+            }
+
+            psd.setWasMoving(psd.isMoving());
+            psd.setLastDirection(psd.getDirection());
+        }
     }
+
 
     @Override
     public void sendMessage(Object msg) {

@@ -264,6 +264,7 @@ public class GameScreen implements Screen {
     @Override
     public void render(float delta) {
         handleInput();
+        multiplayerClient.update(delta);
         updateGame(delta);
         preloadChunksAhead();
         renderGame(delta);
