@@ -14,10 +14,12 @@ import com.badlogic.gdx.utils.viewport.ExtendViewport;
 import io.github.minemon.audio.service.AudioService;
 import io.github.minemon.core.service.ScreenManager;
 import io.github.minemon.core.service.UiService;
+import io.github.minemon.core.ui.DialogCloseListener;
 import io.github.minemon.core.ui.ServerConfigDialog;
 import io.github.minemon.multiplayer.model.ServerConnectionConfig;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.multiplayer.service.ServerConnectionService;
+import io.github.minemon.multiplayer.service.impl.ClientConnectionManager;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.service.WorldService;
@@ -49,14 +51,18 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
     private Table root;
     private Dialog connectingDialog;
     private Dialog loginDialog;
+    @Autowired
+    private WorldService worldService;
+    @Autowired
+    private ClientConnectionManager connectionManager;
 
     @Autowired
     public LoginScreen(
-            AudioService audioService,
-            ScreenManager screenManager,
-            ServerConnectionService serverConnectionService,
-            MultiplayerClient multiplayerClient,
-            UiService uiService) {
+        AudioService audioService,
+        ScreenManager screenManager,
+        ServerConnectionService serverConnectionService,
+        MultiplayerClient multiplayerClient,
+        UiService uiService) {
         this.audioService = audioService;
         this.screenManager = screenManager;
         this.serverConnectionService = serverConnectionService;
@@ -77,8 +83,6 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
         createUI();
         setupInputHandling();
     }
-    @Autowired
-    private WorldService worldService;
 
     private void createUI() {
         setBackground();
@@ -219,6 +223,13 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
     }
 
     private void showLoginDialog(ServerConnectionConfig config) {
+        // First check if another instance is running
+        if (!connectionManager.acquireInstanceLock()) {
+            uiService.getDialogFactory().showError("Connection Error",
+                "Another instance of the game is already running on this machine.");
+            return;
+        }
+
         if (loginDialog != null && loginDialog.isVisible()) {
             loginDialog.hide();
         }
@@ -278,7 +289,6 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
 
                 loginDialog.hide();
                 if (!multiplayerClient.isConnected()) {
-                    // Set pending action to login after connecting
                     multiplayerClient.setPendingLoginRequest(() -> multiplayerClient.login(user, pass));
                     connectToServer(config);
                 } else {
@@ -287,6 +297,13 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
             }
         });
 
+        loginDialog.addListener((DialogCloseListener) () -> {
+            if (!multiplayerClient.isConnected()) {
+                connectionManager.releaseInstanceLock();
+            }
+        });
+
+        // Existing button setup code remains the same
         createButton.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
@@ -299,6 +316,7 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
             @Override
             public void changed(ChangeEvent event, Actor actor) {
                 loginDialog.hide();
+                connectionManager.releaseInstanceLock();
             }
         });
 
@@ -307,6 +325,18 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
         loginDialog.button(cancelButton);
 
         loginDialog.show(stage);
+    }
+
+    // Add cleanup on screen disposal
+    @Override
+    public void dispose() {
+        connectionManager.releaseInstanceLock();
+        if (stage != null) {
+            stage.dispose();
+        }
+        if (skin != null) {
+            skin.dispose();
+        }
     }
 
     private void showCreateAccountDialog(ServerConnectionConfig config) {
@@ -424,14 +454,14 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
 
     private void handleAddServer() {
         ServerConfigDialog dialog = new ServerConfigDialog(
-                skin,
-                uiService.getDialogFactory(),
-                null,
-                config -> {
-                    serverConnectionService.addServer(config);
-                    refreshServerList();
-                    uiService.getDialogFactory().showSuccess("Server Added", "Server successfully added!");
-                }
+            skin,
+            uiService.getDialogFactory(),
+            null,
+            config -> {
+                serverConnectionService.addServer(config);
+                refreshServerList();
+                uiService.getDialogFactory().showSuccess("Server Added", "Server successfully added!");
+            }
         );
         dialog.show(stage);
     }
@@ -444,14 +474,14 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
         }
 
         ServerConfigDialog dialog = new ServerConfigDialog(
-                skin,
-                uiService.getDialogFactory(),
-                selected,
-                config -> {
-                    serverConnectionService.saveConfig(config);
-                    refreshServerList();
-                    uiService.getDialogFactory().showSuccess("Server Updated", "Server successfully updated!");
-                }
+            skin,
+            uiService.getDialogFactory(),
+            selected,
+            config -> {
+                serverConnectionService.saveConfig(config);
+                refreshServerList();
+                uiService.getDialogFactory().showSuccess("Server Updated", "Server successfully updated!");
+            }
         );
         dialog.show(stage);
     }
@@ -464,12 +494,12 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
         }
 
         uiService.getDialogFactory().showConfirmation(
-                "Delete Server",
-                "Are you sure you want to delete '" + selected.getServerName() + "'?",
-                () -> {
-                    serverConnectionService.deleteServer(selected);
-                    refreshServerList();
-                }
+            "Delete Server",
+            "Are you sure you want to delete '" + selected.getServerName() + "'?",
+            () -> {
+                serverConnectionService.deleteServer(selected);
+                refreshServerList();
+            }
         );
     }
 
@@ -524,23 +554,18 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
     }
 
     @Override
-    public void dispose() {
-        stage.dispose();
-    }
-
-    @Override
     public void onCreateUserResponse(boolean success, String message) {
         Gdx.app.postRunnable(() -> {
-                    if (connectingDialog != null) {
-                        connectingDialog.hide();
-                    }
-
-                    if (success) {
-                        uiService.getDialogFactory().showSuccess("Account Created", message);
-                    } else {
-                        uiService.getDialogFactory().showError("Registration Failed", message);
-                    }
+                if (connectingDialog != null) {
+                    connectingDialog.hide();
                 }
+
+                if (success) {
+                    uiService.getDialogFactory().showSuccess("Account Created", message);
+                } else {
+                    uiService.getDialogFactory().showError("Registration Failed", message);
+                }
+            }
         );
     }
 

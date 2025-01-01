@@ -299,6 +299,51 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         return this.tileManager;
     }
 
+
+    @Override
+    public void loadWorld(String worldName) {
+        // Clear existing world data completely
+        clearWorldData();
+
+        // Reset multiplayer mode
+        boolean wasMultiplayer = isMultiplayerMode();
+        if (wasMultiplayer) {
+            setMultiplayerMode(false);
+            log.info("Resetting from multiplayer mode to singleplayer mode");
+        }
+
+        // Load the world
+        try {
+            jsonWorldDataService.loadWorld(worldName, worldData);
+            worldData.setLastPlayed(System.currentTimeMillis());
+            initIfNeeded();
+            log.info("Loaded singleplayer world data for world: {}", worldName);
+        } catch (IOException e) {
+            log.warn("Failed to load world '{}': {}", worldName, e.getMessage());
+        }
+    }
+
+    private void clearWorldData() {
+        worldData.getChunks().clear();
+        worldData.getPlayers().clear();
+        worldData.setSeed(0);
+        worldData.setWorldName(null);
+        worldData.setCreatedDate(0);
+        worldData.setLastPlayed(0);
+        worldData.setPlayedTime(0);
+        initialized = false; // Force reinitialization
+        log.debug("Cleared world data state");
+    }
+
+    @Override
+    public void setMultiplayerMode(boolean multiplayer) {
+        if (this.isMultiplayerMode() != multiplayer) {
+            clearWorldData(); // Clear data when switching modes
+            this.isMultiplayerMode = multiplayer;
+            log.info("Set multiplayer mode to: {}", multiplayer);
+        }
+    }
+
     @Override
     public void initIfNeeded() {
         if (initialized) {
@@ -315,26 +360,48 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         long seed = worldData.getSeed();
         worldGenerator.setSeedAndBiomes(seed, biomes);
         biomeService.initWithSeed(seed);
-
         worldObjectManager.initialize();
         tileManager.initIfNeeded();
 
         initialized = true;
-        log.info("WorldService (client) initialized with seed {}", seed);
+        log.info("WorldService initialized with seed {}", seed);
     }
 
     @Override
-    public WorldData getWorldData() {
-        return worldData;
+    public void saveWorldData() {
+        if (worldData.getWorldName() == null || worldData.getWorldName().isEmpty()) {
+            log.debug("No world loaded, nothing to save.");
+            return;
+        }
+
+        try {
+            // Update timestamps
+            long now = System.currentTimeMillis();
+            long playTime = now - worldData.getLastPlayed();
+            worldData.setPlayedTime(worldData.getPlayedTime() + playTime);
+            worldData.setLastPlayed(now);
+
+            jsonWorldDataService.saveWorld(worldData);
+            log.info("Saved world data for '{}' (played time: {}ms)",
+                worldData.getWorldName(), worldData.getPlayedTime());
+        } catch (IOException e) {
+            log.error("Failed saving world '{}': {}", worldData.getWorldName(), e.getMessage());
+        }
     }
 
     @Override
     public boolean createWorld(String worldName, long seed) {
-        // If it already exists on disk
+        // Check if world exists first
         if (jsonWorldDataService.worldExists(worldName)) {
             log.warn("World '{}' already exists, cannot create", worldName);
             return false;
         }
+
+        // Clear any existing world data first
+        worldData.getChunks().clear();
+        worldData.getPlayers().clear();
+
+        // Set up new world
         long now = System.currentTimeMillis();
         worldData.setWorldName(worldName);
         worldData.setSeed(seed);
@@ -342,53 +409,18 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         worldData.setLastPlayed(now);
         worldData.setPlayedTime(0);
 
-        // Save
         try {
             jsonWorldDataService.saveWorld(worldData);
+            log.info("Created new world '{}' with seed {}", worldName, seed);
+            return true;
         } catch (IOException e) {
             log.error("Failed to create world '{}': {}", worldName, e.getMessage());
             return false;
         }
-        log.info("Created new world '{}' with seed {}", worldName, seed);
-        return true;
     }
-
     @Override
-    public void saveWorldData() {
-        if (worldData.getWorldName() == null || worldData.getWorldName().isEmpty()) {
-            log.info("No world loaded, nothing to save.");
-            return;
-        }
-
-        try {
-            worldData.setLastPlayed(System.currentTimeMillis());
-            jsonWorldDataService.saveWorld(worldData);
-            log.info("Saved world data for '{}'", worldData.getWorldName());
-        } catch (IOException e) {
-            log.error("Failed saving world '{}': {}", worldData.getWorldName(), e.getMessage());
-        }
-    }
-
-    public void loadWorld(String worldName) {
-        log.debug("loadWorld called with {}", worldName);
-
-        if (isMultiplayerMode) {
-            log.debug("Skipping local load because in multiplayer mode.");
-            return;
-        }
-        this.worldData.getChunks().clear();
-        this.worldData.getPlayers().clear();
-        this.worldData.setSeed(0);
-        this.initialized = false;
-
-        try {
-            jsonWorldDataService.loadWorld(worldName, this.worldData);
-            log.debug("World data read from disk: name={}, seed={}", worldData.getWorldName(), worldData.getSeed());
-            initIfNeeded();
-            log.info("Loaded world data for world: {}", worldName);
-        } catch (IOException e) {
-            log.warn("Failed to load world '{}': {}", worldName, e.getMessage());
-        }
+    public WorldData getWorldData() {
+        return worldData;
     }
 
 
@@ -500,9 +532,7 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         return visibleObjects;
     }
 
-    /**
-     * Sets player data with multiplayer awareness
-     */
+
     @Override
     public void setPlayerData(PlayerData playerData) {
         if (playerData == null) {
@@ -511,33 +541,17 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         }
 
         // Always update in-memory state
-        getWorldData().getPlayers().put(playerData.getUsername(), playerData);
+        worldData.getPlayers().put(playerData.getUsername(), playerData);
 
         // Only save to disk in singleplayer mode
         if (!isMultiplayerMode) {
-            String wName = getWorldData().getWorldName();
-            if (wName == null || wName.isEmpty()) {
-                wName = "defaultLocalWorld";
-                getWorldData().setWorldName(wName);
-                log.warn("Client had no local worldName set; using '{}'.", wName);
-            }
-
             try {
-                jsonWorldDataService.savePlayerData(wName, playerData);
+                jsonWorldDataService.savePlayerData(worldData.getWorldName(), playerData);
                 log.debug("Saved player data for {} in singleplayer mode", playerData.getUsername());
             } catch (IOException e) {
                 log.error("Failed to save player data: {}", e.getMessage());
             }
-        } else {
-            log.trace("Skipping local save of player data in multiplayer mode for {}",
-                    playerData.getUsername());
         }
-    }
-
-    @Override
-    public void setMultiplayerMode(boolean multiplayer) {
-        this.isMultiplayerMode = multiplayer;
-        log.info("Set multiplayer mode to: {}", multiplayer);
     }
 
     @Override

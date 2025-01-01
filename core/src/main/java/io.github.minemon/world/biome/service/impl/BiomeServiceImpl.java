@@ -105,7 +105,7 @@ public class BiomeServiceImpl implements BiomeService {
     private BiomeType determineBiomeType(double temperature, double moisture) {
 
         if (temperature < 0.35) {
-            return (moisture > 0.65) ? BiomeType.SNOW : BiomeType.PLAINS;
+            return (moisture > 0.65) ? BiomeType.DESERT : BiomeType.PLAINS;
         } else if (temperature > 0.65) {
             return (moisture < 0.35) ? BiomeType.DESERT : BiomeType.PLAINS;
         } else {

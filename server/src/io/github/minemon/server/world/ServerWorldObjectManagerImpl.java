@@ -35,31 +35,73 @@ public class ServerWorldObjectManagerImpl implements WorldObjectManager {
     @Override
     public List<WorldObject> generateObjectsForChunk(int chunkX, int chunkY, int[][] tiles, Biome biome, long seed) {
         List<WorldObject> objects = new CopyOnWriteArrayList<>();
+        if (biome == null || tiles == null) {
+            log.warn("Cannot generate objects - missing biome or tiles for chunk {},{}", chunkX, chunkY);
+            return objects;
+        }
+
+        // Generate a chunk-specific seed
+        long chunkSeed = seed + chunkX * 341873128712L + chunkY * 132897987541L;
+        Random random = new Random(chunkSeed);
+
+        // Get chunk size from tiles array
         int chunkSize = tiles.length;
 
-        if (biome != null && biome.getSpawnableObjects().contains("TREE_0")) {
-            Random random = new Random((chunkX * 341L + chunkY * 773L) ^ seed);
-            int spacing = 4;
+        // Calculate object placement
+        for (String objTypeName : biome.getSpawnableObjects()) {
+            ObjectType type;
+            try {
+                type = ObjectType.valueOf(objTypeName);
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid object type {} in biome {}", objTypeName, biome.getName());
+                continue;
+            }
 
-            for (int lx = 0; lx < chunkSize; lx += spacing) {
-                for (int ly = 0; ly < chunkSize; ly += spacing) {
-                    int tileId = tiles[lx][ly];
+            double spawnChance = biome.getSpawnChanceForObject(type);
+            int maxAttempts = (int)(spawnChance * (chunkSize * chunkSize));
 
-                    if (biome.getAllowedTileTypes().contains(tileId) && random.nextFloat() < 0.1f) {
-                        int worldX = chunkX * chunkSize + lx;
-                        int worldY = chunkY * chunkSize + ly;
-                        if (noTreeNearby(objects, worldX, worldY, spacing)) {
-                            WorldObject tree = new WorldObject(worldX, worldY, ObjectType.TREE_0, ObjectType.TREE_0.isCollidable());
-                            objects.add(tree);
-                        }
-                    }
+            for (int attempt = 0; attempt < maxAttempts; attempt++) {
+                int localX = random.nextInt(chunkSize);
+                int localY = random.nextInt(chunkSize);
+
+                // Check if tile type is valid for this object
+                int tileId = tiles[localX][localY];
+                if (!biome.getAllowedTileTypes().contains(tileId)) {
+                    continue;
+                }
+
+                // Convert to world coordinates
+                int worldX = chunkX * chunkSize + localX;
+                int worldY = chunkY * chunkSize + localY;
+
+                // Check spacing requirements
+                if (canPlaceObject(objects, worldX, worldY, type)) {
+                    WorldObject obj = new WorldObject(worldX, worldY, type, type.isCollidable());
+                    objects.add(obj);
+                    log.debug("Added {} at {},{} in chunk {},{}",
+                        type, worldX, worldY, chunkX, chunkY);
                 }
             }
         }
 
-        objectsByChunk.put(chunkX + "," + chunkY, objects);
-        log.info("Generated {} objects for chunk {},{} on server.", objects.size(), chunkX, chunkY);
+        log.info("Generated {} objects for chunk {},{}", objects.size(), chunkX, chunkY);
         return objects;
+    }
+
+    private boolean canPlaceObject(List<WorldObject> existingObjects, int x, int y, ObjectType type) {
+        // Define minimum spacing based on object type
+        int minSpacing = type.name().contains("TREE") ? 3 : 2;
+
+        for (WorldObject existing : existingObjects) {
+            int dx = existing.getTileX() - x;
+            int dy = existing.getTileY() - y;
+            double distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < minSpacing) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean noTreeNearby(List<WorldObject> objects, int x, int y, int minDistance) {

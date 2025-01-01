@@ -93,16 +93,16 @@ public class GameScreen implements Screen {
     @Override
     public void show() {
         log.debug("GameScreen.show() >> current worldName={}, seed={}",
-                worldService.getWorldData().getWorldName(),
-                worldService.getWorldData().getSeed());
+            worldService.getWorldData().getWorldName(),
+            worldService.getWorldData().getSeed());
 
         // Who is the current player?
         PlayerData pd = playerService.getPlayerData().getUsername() != null
-                ? playerService.getPlayerData()
-                : null;
+            ? playerService.getPlayerData()
+            : null;
         if (pd != null) {
             log.debug("Player data: username={}, x={}, y={}",
-                    pd.getUsername(), pd.getX(), pd.getY());
+                pd.getUsername(), pd.getX(), pd.getY());
         }
         animationService.initAnimationsIfNeeded();
         if (worldRenderer != null) {
@@ -180,12 +180,14 @@ public class GameScreen implements Screen {
             }
         });
 
+
         exitButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                screenManager.showScreen(ModeSelectionScreen.class);
+                goBackToMenu();
             }
         });
+
 
         pauseWindow.row().pad(10);
         pauseWindow.add(resumeButton).width(180).height(40).pad(5).row();
@@ -194,15 +196,27 @@ public class GameScreen implements Screen {
 
         pauseWindow.pack();
         pauseWindow.setPosition(
-                (pauseStage.getViewport().getWorldWidth() - pauseWindow.getWidth()) / 2f,
-                (pauseStage.getViewport().getWorldHeight() - pauseWindow.getHeight()) / 2f
+            (pauseStage.getViewport().getWorldWidth() - pauseWindow.getWidth()) / 2f,
+            (pauseStage.getViewport().getWorldHeight() - pauseWindow.getHeight()) / 2f
         );
         pauseWindow.setVisible(false);
 
         pauseStage.addActor(pauseWindow);
         pauseOverlay.setUserObject(pauseWindow);
     }
+    private void goBackToMenu() {
+        if (!worldService.isMultiplayerMode()) {
+            worldService.saveWorldData();
+        }
 
+        if (multiplayerClient.isConnected()) {
+            multiplayerClient.disconnect();
+            log.info("Disconnected from server");
+        }
+
+        togglePause();
+        screenManager.showScreen(ModeSelectionScreen.class);
+    }
     private void togglePause() {
         paused = !paused;
         Window pauseWindow = (Window) pauseOverlay.getUserObject();
@@ -223,9 +237,9 @@ public class GameScreen implements Screen {
         String playerName = playerService.getPlayerData().getUsername();
         PlayerData pd = worldService.getPlayerData(playerName);
         log.debug("initializePlayerPosition -> from worldService: username={}, x={}, y={}",
-                pd != null ? pd.getUsername() : "(null)",
-                pd != null ? pd.getX() : 0f,
-                pd != null ? pd.getY() : 0f);
+            pd != null ? pd.getUsername() : "(null)",
+            pd != null ? pd.getX() : 0f,
+            pd != null ? pd.getY() : 0f);
 
         if (pd == null) {
             pd = new PlayerData(playerName, 0, 0);
@@ -243,8 +257,6 @@ public class GameScreen implements Screen {
         camera.position.set(cameraPosX, cameraPosY, 0);
         camera.update();
     }
-
-
 
 
     @Override
@@ -285,8 +297,8 @@ public class GameScreen implements Screen {
             PlayerData player = playerService.getPlayerData();
             updateCamera();
             chunkLoaderService.updatePlayerPosition(
-                    player.getX() * TILE_SIZE,
-                    player.getY() * TILE_SIZE
+                player.getX() * TILE_SIZE,
+                player.getY() * TILE_SIZE
             );
             playerService.update(delta);
 
@@ -333,14 +345,15 @@ public class GameScreen implements Screen {
             PlayerDirection dir = PlayerDirection.DOWN;
             try {
                 dir = PlayerDirection.valueOf(psd.getDirection().toUpperCase());
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
 
             // We pass 'psd.isMoving()' to get the correct standing vs. walking/running frames
             TextureRegion frame = animationService.getCurrentFrame(
-                    dir,
-                    psd.isMoving(),
-                    psd.isRunning(),
-                    psd.getAnimationTime()
+                dir,
+                psd.isMoving(),
+                psd.isRunning(),
+                psd.getAnimationTime()
             );
             batch.draw(frame, px, py);
         }
@@ -445,8 +458,8 @@ public class GameScreen implements Screen {
             if (pauseWindow != null) {
                 pauseWindow.pack();
                 pauseWindow.setPosition(
-                        (pauseStage.getViewport().getWorldWidth() - pauseWindow.getWidth()) / 2f,
-                        (pauseStage.getViewport().getWorldHeight() - pauseWindow.getHeight()) / 2f
+                    (pauseStage.getViewport().getWorldWidth() - pauseWindow.getWidth()) / 2f,
+                    (pauseStage.getViewport().getWorldHeight() - pauseWindow.getHeight()) / 2f
                 );
             }
         }
@@ -467,8 +480,10 @@ public class GameScreen implements Screen {
 
     @Override
     public void dispose() {
-
-        worldService.saveWorldData();
+        if (multiplayerClient.isConnected()) {
+            multiplayerClient.disconnect();
+            log.info("Disconnected from server during screen disposal");
+        }
 
         batch.dispose();
         font.dispose();

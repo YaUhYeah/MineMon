@@ -230,31 +230,45 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         update.setPlayers(states);
         broadcast(update);
     }
-
     private void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest req) {
-        // Rate limit chunk requests per connection
-        String clientId = connection.getID() + "";
-        long now = System.currentTimeMillis();
+        try {
+            synchronized(this) { // Synchronize the entire chunk generation process
+                // First try to get existing chunk
+                ChunkUpdate chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
 
-        chunkRequestTimes.put(clientId, now);
+                if (chunk == null) {
+                    // If chunk doesn't exist, explicitly generate it
+                    worldService.loadChunk(new Vector2(req.getChunkX(), req.getChunkY()));
 
-        ChunkUpdate chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
-        if (chunk == null) {
-            // Generate chunk if it doesn't exist
-            worldService.loadChunk(new Vector2(req.getChunkX(), req.getChunkY()));
-            chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
-            if (chunk == null) {
-                log.error("Failed to generate chunk ({}, {})", req.getChunkX(), req.getChunkY());
-                return;
+                    // Wait briefly for generation
+                    Thread.sleep(50);
+
+                    // Try to get the generated chunk again
+                    chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
+
+                    if (chunk == null) {
+                        log.error("Critical: Failed to generate chunk ({}, {}) after explicit generation",
+                            req.getChunkX(), req.getChunkY());
+                        return;
+                    }
+                }
+
+                // Create and send chunk data response
+                NetworkProtocol.ChunkData cd = new NetworkProtocol.ChunkData();
+                cd.setChunkX(req.getChunkX());
+                cd.setChunkY(req.getChunkY());
+                cd.setTiles(chunk.getTiles());
+                cd.setObjects(chunk.getObjects());
+
+                // Send using TCP for reliability
+                connection.sendTCP(cd);
+
+                log.debug("Successfully sent chunk data for ({},{}) to client {}",
+                    req.getChunkX(), req.getChunkY(), connection.getID());
             }
-        } else {
-
-            NetworkProtocol.ChunkData cd = new NetworkProtocol.ChunkData();
-            cd.setChunkX(req.getChunkX());
-            cd.setChunkY(req.getChunkY());
-            cd.setTiles(chunk.getTiles());
-            cd.setObjects(chunk.getObjects());
-            connection.sendTCP(cd);
+        } catch (Exception e) {
+            log.error("Error in chunk generation for ({},{}): {}",
+                req.getChunkX(), req.getChunkY(), e.getMessage(), e);
         }
     }
 
@@ -335,11 +349,9 @@ public class MultiplayerServerImpl implements MultiplayerServer {
 
             // 6. Clean up caches and executors
             log.info("Cleaning up resources...");
-            if (cacheCleanupExecutor != null) {
-                cacheCleanupExecutor.shutdown();
-                if (!cacheCleanupExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                    cacheCleanupExecutor.shutdownNow();
-                }
+            cacheCleanupExecutor.shutdown();
+            if (!cacheCleanupExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                cacheCleanupExecutor.shutdownNow();
             }
 
             // 7. Clear all maps and collections
