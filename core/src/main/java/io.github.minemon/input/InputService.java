@@ -2,7 +2,10 @@ package io.github.minemon.input;
 
 import com.badlogic.gdx.InputAdapter;
 import io.github.minemon.chat.service.ChatService;
+import io.github.minemon.multiplayer.service.MultiplayerClient;
+import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.player.model.PlayerDirection;
+import io.github.minemon.player.service.PlayerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -21,6 +24,12 @@ public class InputService extends InputAdapter {
     @Autowired
     @Lazy
     private ChatService chatService;
+    @Autowired
+    @Lazy
+    private MultiplayerClient multiplayerClient;
+    @Autowired
+    @Lazy
+    private PlayerService playerService;
 
     /**
      * Returns the current direction, favoring the last pressed direction if multiple are pressed.
@@ -88,22 +97,25 @@ public class InputService extends InputAdapter {
                 case LEFT -> leftPressed = false;
                 case RIGHT -> rightPressed = false;
             }
-            if (dir == lastPressedDirection) {
-                lastPressedDirection = null;
-
-                if (upPressed) lastPressedDirection = PlayerDirection.UP;
-                else if (downPressed) lastPressedDirection = PlayerDirection.DOWN;
-                else if (leftPressed) lastPressedDirection = PlayerDirection.LEFT;
-                else if (rightPressed) lastPressedDirection = PlayerDirection.RIGHT;
-            }
-            return true;
+            lastPressedDirection = null;
         }
 
         if (keycode == inputConfig.getRunKey()) {
             runPressed = false;
-            return true;
         }
 
-        return false;
+        // ---- FINAL STOP PACKET ----
+        if (!upPressed && !downPressed && !leftPressed && !rightPressed) {
+            PlayerData pd = playerService.getPlayerData();
+            float x = pd.getX();
+            float y = pd.getY();
+            String dirName = pd.getDirection().name().toLowerCase();
+
+            // Send "stop" => running = false, moving = false
+            multiplayerClient.sendPlayerMove(x, y, false, false, dirName);
+        }
+
+        return true;
     }
+
 }

@@ -229,11 +229,13 @@ public class MultiplayerServerImpl implements MultiplayerServer {
 
         pd.setWantsToRun(moveReq.isRunning());
 
-        // Use an epsilon so tiny floating differences don’t force "isMoving" = true
-        float epsilon = 0.001f;
+        float newXrounded = (float)Math.round(newX * 1000) / 1000f;
+        float newYrounded = (float)Math.round(newY * 1000) / 1000f;
+
         boolean positionChanged =
-            (Math.abs(oldX - newX) > epsilon) ||
-                (Math.abs(oldY - newY) > epsilon);
+            (Math.abs(oldX - newXrounded) > 0.001f) ||
+                (Math.abs(oldY - newYrounded) > 0.001f);
+
 
         // Only set the position if it actually changed
         if (positionChanged) {
