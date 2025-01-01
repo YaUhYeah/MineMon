@@ -4,6 +4,7 @@ import io.github.minemon.multiplayer.model.ChunkUpdate;
 import io.github.minemon.multiplayer.model.PlayerSyncData;
 import io.github.minemon.multiplayer.model.WorldObjectUpdate;
 import io.github.minemon.player.model.PlayerData;
+import io.github.minemon.player.model.PlayerDirection;
 import io.github.minemon.server.service.MultiplayerService;
 import io.github.minemon.world.model.WorldObject;
 import io.github.minemon.world.service.WorldService;
@@ -44,7 +45,7 @@ public class MultiplayerServiceImpl implements MultiplayerService {
         worldService.initIfNeeded();
         PlayerData pd = worldService.getPlayerData(username);
         if (pd == null) {
-            pd = new PlayerData(username, 0, 0);
+            pd = new PlayerData(username, 0, 0, PlayerDirection.DOWN);
             worldService.setPlayerData(pd);
         }
         connectedPlayers.add(username);
