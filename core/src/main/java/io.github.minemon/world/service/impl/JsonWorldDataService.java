@@ -28,72 +28,79 @@ public class JsonWorldDataService {
 
     private final boolean isServer;
     private final Json json;
+    @Autowired
+    @Lazy
+    private WorldService worldService;
+
+    public JsonWorldDataService(String baseWorldsDir, boolean isServer) {
+        // Ensure baseWorldsDir is never null and has proper format
+        this.baseWorldsDir = baseWorldsDir != null ? baseWorldsDir.trim() : "save/worlds";
+        if (this.baseWorldsDir.isEmpty()) {
+            throw new IllegalArgumentException("Base worlds directory cannot be empty");
+        }
+        this.isServer = isServer;
+        this.json = new Json();
+        this.json.setIgnoreUnknownFields(true);
+
+        // Create base directory if it doesn't exist
+        try {
+            Files.createDirectories(Paths.get(this.baseWorldsDir));
+        } catch (IOException e) {
+            log.error("Failed to create base worlds directory: {}", e.getMessage());
+        }
+    }
+
+
+
     private Path playerDataFolderPath(String worldName) {
         return worldFolderPath(worldName).resolve("playerdata");
     }
 
-    @Autowired
-    @Lazy
-    private WorldService worldService;
     public void savePlayerData(String worldName, PlayerData playerData) throws IOException {
-        // Only save if we're the server OR in singleplayer mode
-        if (!isServer && worldService.isMultiplayerMode()) {
-            log.debug("Skipping player data save in multiplayer client mode");
+        if (worldName == null || playerData == null || playerData.getUsername() == null) {
+            log.warn("Attempted to save invalid player data");
             return;
         }
 
         Path folder = playerDataFolderPath(worldName);
-        if (!Files.exists(folder)) {
-            Files.createDirectories(folder);
-        }
+        Files.createDirectories(folder);
+
         Path file = folder.resolve(playerData.getUsername() + ".json");
-
-        if (isServer) {
-            log.debug("Server saving player data for: {}", playerData.getUsername());
-        } else {
-            log.debug("Local save of player data in singleplayer mode for: {}", playerData.getUsername());
-        }
-
         try (Writer w = Files.newBufferedWriter(file)) {
             json.toJson(playerData, w);
         }
     }
 
     public PlayerData loadPlayerData(String worldName, String username) throws IOException {
+        if (worldName == null || username == null) {
+            log.warn("Attempted to load player data with null world name or username");
+            return null;
+        }
+
         Path folder = playerDataFolderPath(worldName);
         if (!Files.exists(folder)) {
-            return null; // no folder at all
+            Files.createDirectories(folder);
+            return null;
         }
+
         Path file = folder.resolve(username + ".json");
         if (!Files.exists(file)) {
             return null;
         }
 
-        // Log for debugging
-        log.info("Loading player data from {}", file.toAbsolutePath());
-
         try (Reader r = Files.newBufferedReader(file)) {
             return json.fromJson(PlayerData.class, r);
+        } catch (Exception e) {
+            log.error("Error loading player data for {}: {}", username, e.getMessage());
+            return null;
         }
     }
-
-
-    public JsonWorldDataService(
-            @Value("${world.saveDir:save/worlds/}") String baseWorldsDir,
-            @Value("${server.isServer:false}") boolean isServer
-    ) {
-        this.isServer = isServer;
-        log.info("JsonWorldDataService initialized with isServer={}", isServer);
-        this.baseWorldsDir = baseWorldsDir;
-        this.json = new Json();
-        this.json.setIgnoreUnknownFields(true);
-    }
-
-    // Utility: build [assets/save/worlds + / + worldName] as a Path
     private Path worldFolderPath(String worldName) {
-        return Paths.get(baseWorldsDir, worldName);
+        if (worldName == null || worldName.trim().isEmpty()) {
+            throw new IllegalArgumentException("World name cannot be null or empty");
+        }
+        return Paths.get(baseWorldsDir, worldName.trim());
     }
-
     // The main world JSON file -> e.g. "assets/save/worlds/<worldName>/<worldName>.json"
     private Path worldFilePath(String worldName) {
         return worldFolderPath(worldName).resolve(worldName + ".json");
@@ -175,8 +182,8 @@ public class JsonWorldDataService {
     private Path chunkFilePath(String worldName, int chunkX, int chunkY) {
         // e.g. "assets/save/worlds/<worldName>/chunks/<chunkX>,<chunkY>.json"
         return worldFolderPath(worldName)
-                .resolve("chunks")
-                .resolve(chunkX + "," + chunkY + ".json");
+            .resolve("chunks")
+            .resolve(chunkX + "," + chunkY + ".json");
     }
 
 
@@ -188,15 +195,15 @@ public class JsonWorldDataService {
         }
         try {
             Files.list(root)
-                    .filter(Files::isDirectory)
-                    .forEach(path -> {
-                        // We check if <worldName>/<worldName>.json exists
-                        String folderName = path.getFileName().toString();
-                        Path worldJson = path.resolve(folderName + ".json");
-                        if (Files.exists(worldJson)) {
-                            result.add(folderName);
-                        }
-                    });
+                .filter(Files::isDirectory)
+                .forEach(path -> {
+                    // We check if <worldName>/<worldName>.json exists
+                    String folderName = path.getFileName().toString();
+                    Path worldJson = path.resolve(folderName + ".json");
+                    if (Files.exists(worldJson)) {
+                        result.add(folderName);
+                    }
+                });
         } catch (IOException e) {
             log.warn("Could not list worlds: {}", e.getMessage());
         }
@@ -213,14 +220,14 @@ public class JsonWorldDataService {
         }
         try {
             Files.walk(folder)
-                    .sorted((p1, p2) -> p2.getNameCount() - p1.getNameCount()) // files first
-                    .forEach(f -> {
-                        try {
-                            Files.delete(f);
-                        } catch (IOException e) {
-                            log.warn("Failed deleting {}", f);
-                        }
-                    });
+                .sorted((p1, p2) -> p2.getNameCount() - p1.getNameCount()) // files first
+                .forEach(f -> {
+                    try {
+                        Files.delete(f);
+                    } catch (IOException e) {
+                        log.warn("Failed deleting {}", f);
+                    }
+                });
         } catch (IOException e) {
             log.warn("Failed to fully delete world '{}': {}", worldName, e.getMessage());
         }

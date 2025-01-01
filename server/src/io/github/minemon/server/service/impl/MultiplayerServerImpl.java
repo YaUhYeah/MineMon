@@ -40,22 +40,14 @@ public class MultiplayerServerImpl implements MultiplayerServer {
     private final EventBus eventBus;
     private final AuthService authService;
     private final Map<Integer, String> connectionUserMap = new ConcurrentHashMap<>();
-
-    private Server server;
     private final Map<String, Map<ChunkKey, Long>> clientChunkCache = new ConcurrentHashMap<>();
     private final ScheduledExecutorService cacheCleanupExecutor =
-            Executors.newSingleThreadScheduledExecutor();
+        Executors.newSingleThreadScheduledExecutor();
     @Getter
     private final Set<ChunkKey> pendingChunkRequests = ConcurrentHashMap.newKeySet();
-
-    @Data
-    @AllArgsConstructor
-    private static class ChunkKey {
-        private final int x;
-        private final int y;
-    }
-
     private final Map<String, Long> chunkRequestTimes = new ConcurrentHashMap<>();
+    private final Map<String, Connection> activeUsers = new ConcurrentHashMap<>();
+    private Server server;
     private volatile boolean running = false;
     @Autowired
     private WorldService worldService;
@@ -105,9 +97,61 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         }
     }
 
-    private void handleDisconnection(Connection connection) {
+    private void handleLogin(Connection connection, NetworkProtocol.LoginRequest req) {
+        try {
+            // Check if user is already logged in
+            if (activeUsers.containsKey(req.getUsername())) {
+                NetworkProtocol.LoginResponse resp = new NetworkProtocol.LoginResponse();
+                resp.setSuccess(false);
+                resp.setMessage("This user is already logged in");
+                connection.sendTCP(resp);
+                log.warn("Duplicate login attempt for user: {}", req.getUsername());
+                return;
+            }
+
+            boolean authSuccess = authService.authenticate(req.getUsername(), req.getPassword());
+            NetworkProtocol.LoginResponse resp = new NetworkProtocol.LoginResponse();
+
+            if (!authSuccess) {
+                resp.setSuccess(false);
+                resp.setMessage("Invalid username or password.");
+                connection.sendTCP(resp);
+                log.info("Authentication failed for user: {}", req.getUsername());
+                return;
+            }
+
+            // Store connection for this user
+            activeUsers.put(req.getUsername(), connection);
+            connectionUserMap.put(connection.getID(), req.getUsername());
+            multiplayerService.playerConnected(req.getUsername());
+
+            eventBus.fireEvent(new PlayerJoinEvent(req.getUsername()));
+            PlayerData pd = multiplayerService.getPlayerData(req.getUsername());
+
+            resp.setSuccess(true);
+            resp.setUsername(req.getUsername());
+            resp.setX((int) pd.getX());
+            resp.setY((int) pd.getY());
+
+            connection.sendTCP(resp);
+            log.info("User '{}' logged in successfully from {}", req.getUsername(), connection.getRemoteAddressTCP());
+
+            broadcastPlayerStates();
+            sendInitialChunks(connection, pd);
+
+        } catch (Exception e) {
+            log.error("Error during login: {}", e.getMessage(), e);
+            NetworkProtocol.LoginResponse resp = new NetworkProtocol.LoginResponse();
+            resp.setSuccess(false);
+            resp.setMessage("Internal server error occurred");
+            connection.sendTCP(resp);
+        }
+    }
+
+    public void handleDisconnection(Connection connection) {
         String username = connectionUserMap.remove(connection.getID());
         if (username != null) {
+            activeUsers.remove(username); // Remove from active users
             multiplayerService.playerDisconnected(username);
             eventBus.fireEvent(new PlayerLeaveEvent(username));
             log.info("Player {} disconnected", username);
@@ -149,36 +193,6 @@ public class MultiplayerServerImpl implements MultiplayerServer {
 
     }
 
-    private void handleLogin(Connection connection, NetworkProtocol.LoginRequest req) {
-        boolean authSuccess = authService.authenticate(req.getUsername(), req.getPassword());
-        NetworkProtocol.LoginResponse resp = new NetworkProtocol.LoginResponse();
-
-        if (!authSuccess) {
-            resp.setSuccess(false);
-            resp.setMessage("Invalid username or password.");
-            connection.sendTCP(resp);
-            log.info("Authentication failed for user: {}", req.getUsername());
-            return;
-        }
-
-        connectionUserMap.put(connection.getID(), req.getUsername());
-        multiplayerService.playerConnected(req.getUsername());
-
-        eventBus.fireEvent(new PlayerJoinEvent(req.getUsername()));
-        PlayerData pd = multiplayerService.getPlayerData(req.getUsername());
-
-        resp.setSuccess(true);
-        resp.setUsername(req.getUsername());
-        resp.setX((int) pd.getX());
-        resp.setY((int) pd.getY());
-
-        connection.sendTCP(resp);
-        log.info("User '{}' logged in successfully from {}", req.getUsername(), connection.getRemoteAddressTCP());
-
-        broadcastPlayerStates();
-        sendInitialChunks(connection, pd);
-    }
-
     private void handleCreateUser(Connection connection, NetworkProtocol.CreateUserRequest req) {
         NetworkProtocol.CreateUserResponse resp = new NetworkProtocol.CreateUserResponse();
         boolean success = authService.createUser(req.getUsername(), req.getPassword());
@@ -205,7 +219,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
 
         try {
             pd.setDirection(io.github.minemon.player.model.PlayerDirection.valueOf(
-                    moveReq.getDirection().toUpperCase()
+                moveReq.getDirection().toUpperCase()
             ));
         } catch (IllegalArgumentException e) {
             log.error("Invalid direction '{}'", moveReq.getDirection());
@@ -223,16 +237,16 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         broadcastPlayerStates();
     }
 
-
     private void broadcastPlayerStates() {
         Map<String, PlayerSyncData> states = multiplayerService.getAllPlayerStates();
         NetworkProtocol.PlayerStatesUpdate update = new NetworkProtocol.PlayerStatesUpdate();
         update.setPlayers(states);
         broadcast(update);
     }
+
     private void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest req) {
         try {
-            synchronized(this) { // Synchronize the entire chunk generation process
+            synchronized (this) { // Synchronize the entire chunk generation process
                 // First try to get existing chunk
                 ChunkUpdate chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
 
@@ -295,7 +309,6 @@ public class MultiplayerServerImpl implements MultiplayerServer {
             }
         }
     }
-
 
     @Override
     public void broadcast(Object message) {
@@ -368,6 +381,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
             server = null;
         }
     }
+
     @Override
     public void processMessages(float delta) {
         multiplayerService.tick(delta);
@@ -377,5 +391,12 @@ public class MultiplayerServerImpl implements MultiplayerServer {
             wUpdate.setObjects(objectUpdates);
             broadcast(wUpdate);
         }
+    }
+
+    @Data
+    @AllArgsConstructor
+    private static class ChunkKey {
+        private final int x;
+        private final int y;
     }
 }
