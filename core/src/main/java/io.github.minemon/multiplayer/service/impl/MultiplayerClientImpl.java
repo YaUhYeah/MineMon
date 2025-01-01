@@ -1,11 +1,14 @@
 package io.github.minemon.multiplayer.service.impl;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.utils.TimeUtils;
 import com.esotericsoftware.kryonet.Client;
 import com.esotericsoftware.kryonet.Connection;
 import com.esotericsoftware.kryonet.Listener;
 import io.github.minemon.NetworkProtocol;
 import io.github.minemon.chat.event.ChatMessageReceivedEvent;
+import io.github.minemon.chat.model.ChatMessage;
+import io.github.minemon.chat.service.ChatService;
 import io.github.minemon.multiplayer.model.ChunkUpdate;
 import io.github.minemon.multiplayer.model.PlayerSyncData;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
@@ -22,6 +25,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,6 +45,9 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     @Autowired
     @Lazy
     private WorldService worldService;
+    @Autowired
+    @Lazy
+    private ChatService chatService;
 
     @Data
     @AllArgsConstructor
@@ -220,14 +227,46 @@ public class MultiplayerClientImpl implements MultiplayerClient {
                         createResp.getMessage() != null ? createResp.getMessage() : (createResp.isSuccess() ? "Account created." : "Failed to create account.")
                 );
             }
-        } else if (object instanceof NetworkProtocol.PlayerStatesUpdate pUpdate) {
-            // Clear and update player states
+        }    if (object instanceof NetworkProtocol.PlayerStatesUpdate pUpdate) {
+            // Compare with previous state to detect joins/leaves
+            Set<String> previousPlayers = new HashSet<>(playerStates.keySet());
+            Set<String> currentPlayers = new HashSet<>(pUpdate.getPlayers().keySet());
+
+            // Find new players (joins)
+            Set<String> joins = new HashSet<>(currentPlayers);
+            joins.removeAll(previousPlayers);
+
+            // Find players who left
+            Set<String> leaves = new HashSet<>(previousPlayers);
+            leaves.removeAll(currentPlayers);
+
+            // Handle joins
+            for (String username : joins) {
+                ChatMessage joinMsg = new ChatMessage();
+                joinMsg.setSender("System");
+                joinMsg.setContent(username + " joined the game");
+                joinMsg.setTimestamp(System.currentTimeMillis());
+                joinMsg.setType(ChatMessage.Type.SYSTEM);
+                chatService.handleIncomingMessage(joinMsg);
+            }
+
+            // Handle leaves
+            for (String username : leaves) {
+                ChatMessage leaveMsg = new ChatMessage();
+                leaveMsg.setSender("System");
+                leaveMsg.setContent(username + " left the game");
+                leaveMsg.setTimestamp(System.currentTimeMillis());
+                leaveMsg.setType(ChatMessage.Type.SYSTEM);
+                chatService.handleIncomingMessage(leaveMsg);
+            }
+
+            // Update states
             playerStates.clear();
             playerStates.putAll(pUpdate.getPlayers());
 
-            // **New Step:** Update local player animations and camera based on new states
-            Gdx.app.postRunnable(this::updateLocalPlayersFromServerStates);
-        }  else if (object instanceof NetworkProtocol.ChunkData chunkData) {
+            // Update animation states
+            updatePlayerAnimations();
+        } else if (object instanceof NetworkProtocol.ChunkData chunkData) {
             ChunkKey key = new ChunkKey(chunkData.getChunkX(), chunkData.getChunkY());
             if (pendingChunkRequests.remove(key)) {
                 log.debug("Received chunk data for ({},{})", chunkData.getChunkX(), chunkData.getChunkY());
@@ -287,45 +326,27 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     }
 
 
-    private void updateLocalPlayersFromServerStates() {
-        for (Map.Entry<String, PlayerSyncData> entry : playerStates.entrySet()) {
-            String username = entry.getKey();
-            PlayerSyncData syncData = entry.getValue();
+    private void updatePlayerAnimations() {
+        float currentTime = TimeUtils.millis() / 1000f;
 
-            PlayerData localPD = worldService.getPlayerData(username);
-            if (localPD == null) {
-                localPD = new PlayerData(username, syncData.getX(), syncData.getY());
-                worldService.setPlayerData(localPD);
+        for (PlayerSyncData playerData : playerStates.values()) {
+            float timeDelta = currentTime - playerData.getLastUpdateTime();
+            playerData.setLastUpdateTime(currentTime);
+
+            if (playerData.isMoving()) {
+                playerData.updateAnimationTime(timeDelta);
             }
 
-            localPD.setX(syncData.getX());
-            localPD.setY(syncData.getY());
-            localPD.setWantsToRun(syncData.isRunning());
-            localPD.setMoving(syncData.isMoving());
-
-            try {
-                localPD.setDirection(io.github.minemon.player.model.PlayerDirection.valueOf(
-                        syncData.getDirection().toUpperCase()
-                ));
-            } catch (IllegalArgumentException e) {
-                log.error("Invalid direction '{}' for player '{}'",
-                        syncData.getDirection(), username, e);
+            // Reset animation time if direction changed or movement state changed
+            if (!playerData.getDirection().equals(playerData.getLastDirection()) ||
+                playerData.isMoving() != playerData.isWasMoving()) {
+                playerData.setAnimationTime(0f);
             }
 
-            boolean directionChanged = (syncData.getLastDirection() == null
-                    || !syncData.getLastDirection().equalsIgnoreCase(syncData.getDirection()));
-            boolean movementChanged = (syncData.isMoving() != syncData.isWasMoving());
-
-            if (directionChanged || movementChanged) {
-                syncData.setAnimationTime(0f);
-            }
-
-            syncData.setWasMoving(syncData.isMoving());
-            syncData.setLastDirection(syncData.getDirection());
+            playerData.setWasMoving(playerData.isMoving());
+            playerData.setLastDirection(playerData.getDirection());
         }
     }
-
-
     @Override
     public void disconnect() {
         if (client != null && connected) {

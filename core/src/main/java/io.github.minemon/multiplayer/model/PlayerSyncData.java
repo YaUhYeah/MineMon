@@ -4,11 +4,6 @@ import lombok.Getter;
 import lombok.Setter;
 import io.github.minemon.player.model.PlayerData;
 
-/**
- * Each remote player's sync data as sent by the server.
- * Now includes local animation fields for the client to track
- * each player's animation time and movement states.
- */
 @Getter @Setter
 public class PlayerSyncData {
     private String username;
@@ -19,7 +14,7 @@ public class PlayerSyncData {
     private boolean moving;
 
     private float animationTime = 0f;
-
+    private float lastUpdateTime = 0f;
     private boolean wasMoving;
     private String lastDirection;
 
@@ -31,6 +26,20 @@ public class PlayerSyncData {
         sync.setRunning(pd.isWantsToRun());
         sync.setDirection(pd.getDirection() != null ? pd.getDirection().name() : "DOWN");
         sync.setMoving(pd.isMoving());
+
+        if (sync.isMoving() != sync.wasMoving ||
+            !sync.direction.equals(sync.lastDirection)) {
+            sync.setAnimationTime(0f);
+        }
+
+        sync.setWasMoving(sync.isMoving());
+        sync.setLastDirection(sync.direction);
         return sync;
+    }
+
+    public void updateAnimationTime(float delta) {
+        if (moving) {
+            animationTime += delta;
+        }
     }
 }
