@@ -204,6 +204,7 @@ public class GameScreen implements Screen {
         pauseStage.addActor(pauseWindow);
         pauseOverlay.setUserObject(pauseWindow);
     }
+
     private void goBackToMenu() {
         if (!worldService.isMultiplayerMode()) {
             worldService.saveWorldData();
@@ -217,6 +218,7 @@ public class GameScreen implements Screen {
         togglePause();
         screenManager.showScreen(ModeSelectionScreen.class);
     }
+
     private void togglePause() {
         paused = !paused;
         Window pauseWindow = (Window) pauseOverlay.getUserObject();
@@ -308,6 +310,38 @@ public class GameScreen implements Screen {
         hudStage.act(delta);
     }
 
+    private void renderRemotePlayers(SpriteBatch batch) {
+        Map<String, PlayerSyncData> states = multiplayerClient.getPlayerStates();
+        String localUsername = playerService.getPlayerData().getUsername();
+
+        for (Map.Entry<String, PlayerSyncData> entry : states.entrySet()) {
+            String otherUsername = entry.getKey();
+            // Skip rendering local player
+            if (otherUsername.equals(localUsername)) continue;
+
+            PlayerSyncData psd = entry.getValue();
+
+            float px = psd.getX() * TILE_SIZE;
+            float py = psd.getY() * TILE_SIZE;
+
+            PlayerDirection dir = PlayerDirection.DOWN;
+            try {
+                dir = PlayerDirection.valueOf(psd.getDirection().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid direction for player {}: {}", otherUsername, psd.getDirection());
+            }
+
+            // Get animation frame based on movement state
+            TextureRegion frame = animationService.getCurrentFrame(
+                dir,
+                psd.isMoving(),
+                psd.isRunning(),
+                psd.getAnimationTime()
+            );
+
+            batch.draw(frame, px, py);
+        }
+    }
 
     private void renderGame(float delta) {
         // Clear
@@ -322,41 +356,7 @@ public class GameScreen implements Screen {
         batch.begin();
         playerService.render(batch);
 
-        // 2) Draw remote players with updated animation time
-        // In renderGame:
-        Map<String, PlayerSyncData> states = multiplayerClient.getPlayerStates();
-        String localUsername = playerService.getPlayerData().getUsername();
-
-        for (Map.Entry<String, PlayerSyncData> entry : states.entrySet()) {
-            String otherUsername = entry.getKey();
-            // Skip local
-            if (otherUsername.equals(localUsername)) continue;
-
-            PlayerSyncData psd = entry.getValue();
-
-            // If the remote is moving, increment their local animation timer
-            if (psd.isMoving()) {
-                psd.setAnimationTime(psd.getAnimationTime() + delta);
-            }
-
-            float px = psd.getX() * TILE_SIZE;
-            float py = psd.getY() * TILE_SIZE;
-
-            PlayerDirection dir = PlayerDirection.DOWN;
-            try {
-                dir = PlayerDirection.valueOf(psd.getDirection().toUpperCase());
-            } catch (Exception ignored) {
-            }
-
-            // We pass 'psd.isMoving()' to get the correct standing vs. walking/running frames
-            TextureRegion frame = animationService.getCurrentFrame(
-                dir,
-                psd.isMoving(),
-                psd.isRunning(),
-                psd.getAnimationTime()
-            );
-            batch.draw(frame, px, py);
-        }
+        renderRemotePlayers(batch);
 
 
         batch.end();
