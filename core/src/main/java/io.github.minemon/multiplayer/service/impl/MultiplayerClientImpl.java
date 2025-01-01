@@ -264,8 +264,6 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             playerStates.clear();
             playerStates.putAll(pUpdate.getPlayers());
 
-            // Update animation states
-            updatePlayerAnimations();
         } else if (object instanceof NetworkProtocol.ChunkData chunkData) {
             ChunkKey key = new ChunkKey(chunkData.getChunkX(), chunkData.getChunkY());
             if (pendingChunkRequests.remove(key)) {
@@ -326,27 +324,6 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     }
 
 
-    private void updatePlayerAnimations() {
-        float currentTime = TimeUtils.millis() / 1000f;
-
-        for (PlayerSyncData playerData : playerStates.values()) {
-            float timeDelta = currentTime - playerData.getLastUpdateTime();
-            playerData.setLastUpdateTime(currentTime);
-
-            if (playerData.isMoving()) {
-                playerData.updateAnimationTime(timeDelta);
-            }
-
-            // Reset animation time if direction changed or movement state changed
-            if (!playerData.getDirection().equals(playerData.getLastDirection()) ||
-                playerData.isMoving() != playerData.isWasMoving()) {
-                playerData.setAnimationTime(0f);
-            }
-
-            playerData.setWasMoving(playerData.isMoving());
-            playerData.setLastDirection(playerData.getDirection());
-        }
-    }
     @Override
     public void disconnect() {
         if (client != null && connected) {

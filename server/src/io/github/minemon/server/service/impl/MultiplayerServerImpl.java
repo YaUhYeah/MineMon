@@ -11,6 +11,7 @@ import io.github.minemon.player.event.PlayerLeaveEvent;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.multiplayer.model.ChunkUpdate;
 import io.github.minemon.multiplayer.model.PlayerSyncData;
+import io.github.minemon.player.model.PlayerDirection;
 import io.github.minemon.server.service.MultiplayerServer;
 import io.github.minemon.server.service.MultiplayerService;
 import io.github.minemon.world.service.WorldService;
@@ -224,13 +225,21 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         } catch (IllegalArgumentException e) {
             log.error("Invalid direction '{}'", moveReq.getDirection());
         }
-
-        boolean positionChanged = (pd.getX() != moveReq.getX() || pd.getY() != moveReq.getY());
+        float oldX = pd.getX();
+        float oldY = pd.getY();
 
         pd.setX(moveReq.getX());
         pd.setY(moveReq.getY());
         pd.setWantsToRun(moveReq.isRunning());
+
+        boolean positionChanged = (oldX != pd.getX() || oldY != pd.getY());
         pd.setMoving(positionChanged);
+
+        pd.setDirection(
+            PlayerDirection.valueOf(moveReq.getDirection().toUpperCase())
+        );
+
+
 
         worldService.setPlayerData(pd);
 
