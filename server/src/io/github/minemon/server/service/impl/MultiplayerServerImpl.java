@@ -207,7 +207,6 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         connection.sendTCP(resp);
         log.info("User creation attempt for '{}': {}", req.getUsername(), success ? "SUCCESS" : "FAILURE");
     }
-
     private void handlePlayerMove(Connection connection, NetworkProtocol.PlayerMoveRequest moveReq) {
         String username = connectionUserMap.get(connection.getID());
         if (username == null) return;
@@ -224,21 +223,33 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         float oldX = pd.getX();
         float oldY = pd.getY();
 
-        pd.setX(moveReq.getX());
-        pd.setY(moveReq.getY());
+        // Proposed new position (from the client)
+        float newX = moveReq.getX();
+        float newY = moveReq.getY();
+
         pd.setWantsToRun(moveReq.isRunning());
-        float epsilon = 0.0001f;
+
+        // Use an epsilon so tiny floating differences don’t force "isMoving" = true
+        float epsilon = 0.001f;
         boolean positionChanged =
-            (Math.abs(oldX - pd.getX()) > epsilon) ||
-                (Math.abs(oldY - pd.getY()) > epsilon);
+            (Math.abs(oldX - newX) > epsilon) ||
+                (Math.abs(oldY - newY) > epsilon);
 
-        pd.setMoving(positionChanged);
+        // Only set the position if it actually changed
+        if (positionChanged) {
+            pd.setX(newX);
+            pd.setY(newY);
+            pd.setMoving(true);
+        } else {
+            pd.setMoving(false);
+        }
 
-        // Removed the duplicate pd.setDirection call
+        // Persist updated PlayerData
         worldService.setPlayerData(pd);
+
+        // Broadcast the updated state to everyone
         broadcastPlayerStates();
     }
-
 
     private void broadcastPlayerStates() {
         Map<String, PlayerSyncData> states = multiplayerService.getAllPlayerStates();

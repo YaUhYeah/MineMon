@@ -21,6 +21,7 @@ import io.github.minemon.multiplayer.model.PlayerSyncData;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.player.model.PlayerDirection;
+import io.github.minemon.player.model.RemotePlayerModel;
 import io.github.minemon.player.service.PlayerAnimationService;
 import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.biome.service.BiomeService;
@@ -33,6 +34,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @Slf4j
@@ -64,6 +66,7 @@ public class GameScreen implements Screen {
     private float cameraPosX, cameraPosY;
     private Image pauseOverlay;
     private InputMultiplexer multiplexer;
+    private Map<String, RemotePlayerModel> remoteModels = new ConcurrentHashMap<>();
 
     @Autowired
     public GameScreen(PlayerService playerService,
@@ -244,7 +247,7 @@ public class GameScreen implements Screen {
             pd != null ? pd.getY() : 0f);
 
         if (pd == null) {
-            pd = new PlayerData(playerName, 0, 0,PlayerDirection.DOWN);
+            pd = new PlayerData(playerName, 0, 0, PlayerDirection.DOWN);
             playerService.setPlayerData(pd);
             log.debug("No existing PD => created new at (0,0)");
         } else {
@@ -259,7 +262,6 @@ public class GameScreen implements Screen {
         camera.position.set(cameraPosX, cameraPosY, 0);
         camera.update();
     }
-
 
     @Override
     public void render(float delta) {
@@ -311,7 +313,7 @@ public class GameScreen implements Screen {
         hudStage.act(delta);
     }
 
-    private void renderRemotePlayers(SpriteBatch batch) {
+    private void renderRemotePlayers(SpriteBatch batch, float delta) {
         Map<String, PlayerSyncData> states = multiplayerClient.getPlayerStates();
         String localUsername = playerService.getPlayerData().getUsername();
 
@@ -322,25 +324,39 @@ public class GameScreen implements Screen {
 
             PlayerSyncData psd = entry.getValue();
 
-            float px = psd.getX() * TILE_SIZE;
-            float py = psd.getY() * TILE_SIZE;
+            // 1) Get or create the remote model for this username
+            RemotePlayerModel rpm = remoteModels.computeIfAbsent(otherUsername, k -> new RemotePlayerModel());
 
-            PlayerDirection dir = PlayerDirection.DOWN;
-            try {
-                dir = PlayerDirection.valueOf(psd.getDirection().toUpperCase());
-            } catch (IllegalArgumentException e) {
-                log.warn("Invalid direction for player {}: {}", otherUsername, psd.getDirection());
+            // 2) Update the target states from the server data
+            rpm.targetX = psd.getX() * TILE_SIZE;
+            rpm.targetY = psd.getY() * TILE_SIZE;
+            rpm.direction = PlayerDirection.valueOf(psd.getDirection().toUpperCase());
+            rpm.moving = psd.isMoving();
+            rpm.running = psd.isRunning();
+
+            // 3) Smoothly lerp currentX/Y to targetX/Y
+            float lerpFactor = 10f * delta; // adjust speed as needed
+            rpm.currentX += (rpm.targetX - rpm.currentX) * lerpFactor;
+            rpm.currentY += (rpm.targetY - rpm.currentY) * lerpFactor;
+
+            // 4) Update animation time if moving
+            if (rpm.moving) {
+                rpm.animationTime += delta;
+            } else {
+                // Optionally reset animationTime or leave it as-is
+                // rpm.animationTime = 0f;
             }
 
-            // Get animation frame based on movement state
+            // 5) Select the correct frame
             TextureRegion frame = animationService.getCurrentFrame(
-                dir,
-                psd.isMoving(),
-                psd.isRunning(),
-                psd.getAnimationTime()
+                rpm.direction,
+                rpm.moving,
+                rpm.running,
+                rpm.animationTime
             );
 
-            batch.draw(frame, px, py);
+            // 6) Draw at currentX/currentY
+            batch.draw(frame, rpm.currentX, rpm.currentY);
         }
     }
 
@@ -357,7 +373,7 @@ public class GameScreen implements Screen {
         batch.begin();
         playerService.render(batch);
 
-        renderRemotePlayers(batch);
+        renderRemotePlayers(batch,delta);
 
 
         batch.end();
