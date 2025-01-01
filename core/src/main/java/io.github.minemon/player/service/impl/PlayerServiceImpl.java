@@ -247,7 +247,12 @@ public class PlayerServiceImpl implements PlayerService {
     public PlayerData getPlayerData() {
         float tileX = playerModel.getPosition().x / TILE_SIZE;
         float tileY = playerModel.getPosition().y / TILE_SIZE;
-        return new PlayerData(username, tileX, tileY,playerModel.getDirection());
+        PlayerData pd = new PlayerData(username, tileX, tileY, playerModel.getDirection());
+
+        pd.setMoving(playerModel.isMoving());
+        pd.setWantsToRun(playerModel.isRunning());
+
+        return pd;
     }
 
     @Override
@@ -259,6 +264,10 @@ public class PlayerServiceImpl implements PlayerService {
         int tileX = (int) data.getX();
         int tileY = (int) data.getY();
         setPosition(tileX, tileY);
+        playerModel.setMoving(data.isMoving());
+        playerModel.setRunning(data.isWantsToRun());
+
+        playerModel.setDirection(data.getDirection());
 
         log.debug("Player data updated: username={}, x={}, y={}", data.getUsername(), data.getX(), data.getY());
 

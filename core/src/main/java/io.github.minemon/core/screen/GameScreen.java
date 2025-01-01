@@ -66,7 +66,7 @@ public class GameScreen implements Screen {
     private float cameraPosX, cameraPosY;
     private Image pauseOverlay;
     private InputMultiplexer multiplexer;
-    private Map<String, RemotePlayerModel> remoteModels = new ConcurrentHashMap<>();
+    private final Map<String, RemotePlayerModel> remoteModels = new ConcurrentHashMap<>();
 
     @Autowired
     public GameScreen(PlayerService playerService,
