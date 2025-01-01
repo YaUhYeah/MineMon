@@ -1,0 +1,2 @@
+include ':lwjgl3', ':core', ':server', ':android', ':html', ':ios'
+

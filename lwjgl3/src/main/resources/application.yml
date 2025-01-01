@@ -1,0 +1,73 @@
+spring:
+  application:
+    name: pokemeetup
+
+sounds:
+  masterVolume: 1.0f
+  musicVolume: 0.7f
+  musicEnabled: true
+  musicFadeDuration: 2.0f
+  fadeOutDuration: 2.0f
+  weather:
+    light_rain: "sounds/weather/rain.ogg"
+    thunder: "sounds/weather/thunder.ogg"
+    wind: "sounds/weather/wind.ogg"
+    sand_wind: "sounds/weather/sandwind.ogg"
+  effects:
+    item_pickup: "sounds/pickup.ogg"
+    menu_select: "sounds/select.ogg"
+    menu_back: "sounds/back.ogg"
+    battle_win: "sounds/battle_win.ogg"
+    critical_hit: "sounds/critical_hit.ogg"
+    cursor_move: "sounds/cursor_move.ogg"
+    damage: "sounds/damage.ogg"
+    collide: "sounds/player-bump.ogg"
+    move_select: "sounds/move_select.ogg"
+    not_effective: "sounds/not_effective.ogg"
+    super_effective: "sounds/super_effective.ogg"
+    craft: "sounds/crafting.ogg"
+    block_place_0: "sounds/block_place_0.ogg"
+    block_place_1: "sounds/block_place_1.ogg"
+    block_place_2: "sounds/block_place_2.ogg"
+    block_break_wood: "sounds/break_wood.ogg"
+    tool_break: "sounds/tool_break.ogg"
+    block_break_wood_hand: "sounds/break_wood_hand.ogg"
+  menu:
+    - "music/Menu-Music-1.mp3"
+    - "music/Menu-Music-2.mp3"
+    - "music/Menu-Music-0.mp3"
+    - "music/Menu-Music-3.mp3"
+    - "music/Menu-Music-4.mp3"
+  biomes:
+    forest:
+      - "music/Forest-Biome-0.mp3"
+      - "music/Forest-Biome-1.mp3"
+      - "music/Forest-Biome-2.mp3"
+      - "music/Forest-Biome-3.mp3"
+    snow:
+      - "music/Snow-Biome-0.mp3"
+      - "music/Snow-Biome-1.mp3"
+      - "music/Snow-Biome-2.mp3"
+    haunted:
+      - "music/Haunted-Biome-0.mp3"
+      - "music/Haunted-Biome-1.mp3"
+    plains:
+      - "music/Plains-Biome-0.mp3"
+      - "music/Plains-Biome-1.mp3"
+      - "music/Plains-Biome-2.mp3"
+      - "music/Plains-Biome-3.mp3"
+      - "music/Plains-Biome-4.mp3"
+    big_mountains:
+      - "music/Mountain-Biome-1.mp3"
+      - "music/Mountain-Biome-0.mp3"
+    rain_forest:
+      - "music/RainForest-Biome-0.mp3"
+      - "music/RainForest-Biome-1.mp3"
+      - "music/RainForest-Biome-2.mp3"
+      - "music/RainForest-Biome-3.mp3"
+    dessert:
+      - "music/Desert-Biome-0.mp3"
+      - "music/Desert-Biome-1.mp3"
+      - "music/Desert-Biome-2.mp3"
+      - "music/Desert-Biome-3.mp3"
+      - "music/Desert-Biome-4.mp3"

@@ -1,0 +1,37 @@
+plugins {
+  id 'java'
+  id 'application'
+
+}
+
+java {
+  sourceCompatibility = JavaVersion.VERSION_17
+  targetCompatibility = JavaVersion.VERSION_17
+}
+
+application {
+  // Or if you prefer mainClass = ...
+  mainClass = 'io.github.minemon.server.ServerLauncher'
+}
+
+dependencies {
+  // The local project reference:
+  implementation project(':core')
+  implementation 'org.springframework.boot:spring-boot-starter-web:3.1.4'
+
+  implementation 'com.esotericsoftware:kryonet:2.22.0-RC1'
+  implementation project(path: ':lwjgl3')
+}
+repositories {
+  mavenCentral()
+  // Print them out for debugging
+  println "Server project repos: " + repositories*.name
+}
+
+jar {
+  archiveBaseName.set("MineMon")
+  duplicatesStrategy DuplicatesStrategy.EXCLUDE
+  manifest {
+    attributes 'Main-Class': application.mainClass
+  }
+}

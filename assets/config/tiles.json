@@ -1,0 +1,8 @@
+{
+  "tiles": [
+    { "id": 0, "name": "grass", "texture": "grass", "passable": true },
+    { "id": 1, "name": "flower", "texture": "flower", "passable": true },
+    { "id": 2, "name": "desert_sand", "texture": "desert_sand", "passable": true },
+    { "id": 3, "name": "sand", "texture": "sand", "passable": true }
+  ]
+}
