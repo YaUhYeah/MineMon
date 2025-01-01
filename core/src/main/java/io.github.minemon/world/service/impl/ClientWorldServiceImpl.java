@@ -14,6 +14,7 @@ import com.badlogic.gdx.math.Vector2;
 import io.github.minemon.multiplayer.model.WorldObjectUpdate;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.player.model.PlayerData;
+import io.github.minemon.player.model.PlayerDirection;
 import io.github.minemon.world.biome.config.BiomeConfigurationLoader;
 import io.github.minemon.world.biome.model.Biome;
 import io.github.minemon.world.biome.model.BiomeType;
@@ -567,7 +568,7 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             try {
                 pd = jsonWorldDataService.loadPlayerData(wName, username);
                 if (pd == null) {
-                    pd = new PlayerData(username, 0, 0);
+                    pd = new PlayerData(username, 0, 0, PlayerDirection.DOWN);
                     jsonWorldDataService.savePlayerData(wName, pd);
                 }
                 getWorldData().getPlayers().put(username, pd);
