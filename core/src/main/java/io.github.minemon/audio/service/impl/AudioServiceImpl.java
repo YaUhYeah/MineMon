@@ -53,7 +53,7 @@ public class AudioServiceImpl implements AudioService {
 
         for (SoundEffect effect : SoundEffect.values()) {
             try {
-                Sound sound = Gdx.audio.newSound(Gdx.files.internal("assets/" + effect.getPath()));
+                Sound sound = Gdx.audio.newSound(Gdx.files.internal("" + effect.getPath()));
                 sounds.put(effect, sound);
             } catch (Exception e) {
                 logger.error("Failed to load sound: {}", effect.getPath(), e);
@@ -64,7 +64,7 @@ public class AudioServiceImpl implements AudioService {
 
 
         for (WeatherSoundEffect wEffect : WeatherSoundEffect.values()) {
-            String path = "assets/" + wEffect.getPath();
+            String path = wEffect.getPath();
             if (wEffect == WeatherSoundEffect.THUNDER) {
 
                 try {
@@ -99,7 +99,7 @@ public class AudioServiceImpl implements AudioService {
     private void loadMenuMusic(List<String> paths) {
         for (String path : paths) {
             try {
-                Music music = Gdx.audio.newMusic(Gdx.files.internal("assets/" + path));
+                Music music = Gdx.audio.newMusic(Gdx.files.internal( path));
                 music.setVolume(musicVolume * masterVolume);
                 menuMusicList.add(music);
             } catch (Exception e) {

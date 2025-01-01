@@ -45,7 +45,7 @@ public class BackgroundService {
 
 
         try {
-            Texture bgTexture = new Texture(Gdx.files.internal("assets/Textures/UI/ethereal.png"));
+            Texture bgTexture = new Texture(Gdx.files.internal("Textures/UI/ethereal.png"));
             backgroundTexture = new TextureRegion(bgTexture);
         } catch (Exception e) {
             log.error("Failed to load background texture", e);

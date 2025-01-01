@@ -26,6 +26,7 @@ import io.github.minemon.world.service.WorldObjectManager;
 import io.github.minemon.world.service.WorldService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Profile;
@@ -36,7 +37,6 @@ import java.util.*;
 
 @Slf4j
 @Service
-@Profile("client")
 public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements WorldService {
     private static final int CHUNK_SIZE = 16;
     private final boolean isServer = false;
@@ -56,7 +56,7 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     private final WorldData worldData = new WorldData();
     @Value("${world.defaultName:defaultWorld}")
     private String defaultWorldName;
-    @Value("${world.saveDir:assets/save/worlds/}")
+    @Value("${world.saveDir:save/worlds/}")
     private String saveDir;
     private boolean initialized = false;
 
@@ -75,7 +75,7 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             BiomeConfigurationLoader biomeLoader,
             BiomeService biomeService,
             ObjectTextureManager objectTextureManager,
-            JsonWorldDataService jsonWorldDataService     // NEW
+            @Qualifier("clientJsonWorldDataService") JsonWorldDataService jsonWorldDataService
     ) {
         this.worldGenerator = worldGenerator;
         this.worldObjectManager = worldObjectManager;
@@ -305,7 +305,7 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             return;
         }
 
-        Map<BiomeType, Biome> biomes = biomeLoader.loadBiomes("assets/config/biomes.json");
+        Map<BiomeType, Biome> biomes = biomeLoader.loadBiomes("config/biomes.json");
         if (worldData.getSeed() == 0) {
             long randomSeed = new Random().nextLong();
             worldData.setSeed(randomSeed);
@@ -372,6 +372,10 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     public void loadWorld(String worldName) {
         log.debug("loadWorld called with {}", worldName);
 
+        if (isMultiplayerMode) {
+            log.debug("Skipping local load because in multiplayer mode.");
+            return;
+        }
         this.worldData.getChunks().clear();
         this.worldData.getPlayers().clear();
         this.worldData.setSeed(0);

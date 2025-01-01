@@ -19,7 +19,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 @Service
 @Slf4j
-@Profile("client")
 public class WorldObjectManagerImpl implements WorldObjectManager {
 
     private static final int CHUNK_SIZE = 16;

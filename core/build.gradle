@@ -22,8 +22,8 @@ dependencies {
   // --- LibGDX core and networking
   api "com.badlogicgames.gdx:gdx:$gdxVersion"
   implementation "com.esotericsoftware:kryonet:2.22.0-RC1"
+  implementation 'com.h2database:h2:2.2.224'
 
-  implementation 'org.h2database:h2:2.2.224'
   // --- Basic Spring (Context, Beans, Boot, Logging, etc.)
   implementation "org.springframework.boot:spring-boot-starter:3.1.4"
 
@@ -37,7 +37,6 @@ dependencies {
   // This is included by spring-boot-starter-security, but if you want only crypto:
   // implementation "org.springframework.security:spring-security-crypto:6.1.4"
   // OR full security (often needed):
-  implementation "org.springframework.boot:spring-boot-starter-security:3.1.4"
 
   // --- If you use @ConfigurationProperties
   annotationProcessor "org.springframework.boot:spring-boot-configuration-processor:3.1.4"

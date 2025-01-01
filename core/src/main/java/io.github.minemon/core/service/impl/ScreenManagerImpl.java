@@ -30,6 +30,7 @@ public class ScreenManagerImpl implements ScreenManager {
         screenHistory.push(screenClass);
         previousScreen = game.getScreen();
         Screen newScreen = applicationContext.getBean(screenClass);
+        System.out.println("ScreenManager.showScreen -> about to set " + newScreen);
         Gdx.app.postRunnable(() -> game.setScreen(newScreen));
     }
 

@@ -17,7 +17,6 @@ import org.springframework.stereotype.Component;
 import java.util.HashMap;
 
 @Component
-@Profile("client")
 @Qualifier("clientTileManagerImpl")
 public class ClientTileManagerImpl implements TileManager {
     private static final Logger logger = LoggerFactory.getLogger(ClientTileManagerImpl.class);
@@ -38,7 +37,7 @@ public class ClientTileManagerImpl implements TileManager {
     public void initIfNeeded() {
         if (!initialized) {
             loadConfig(tileConfigFile);
-            atlas = new TextureAtlas(Gdx.files.internal("assets/atlas/tiles-gfx-atlas.atlas"));
+            atlas = new TextureAtlas(Gdx.files.internal("atlas/tiles-gfx-atlas.atlas"));
             initialized = true;
             logger.info("TileManager (client) initialized.");
         }

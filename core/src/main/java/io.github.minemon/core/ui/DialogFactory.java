@@ -130,9 +130,9 @@ public class DialogFactory {
 
     private Image createIcon(DialogType type) {
         String iconPath = switch (type) {
-            case WARNING -> "assets/Textures/UI/warning-icon.png";
-            case ERROR -> "assets/Textures/UI/error-icon.png";
-            case SUCCESS -> "assets/Textures/UI/success-icon.png";
+            case WARNING -> "Textures/UI/warning-icon.png";
+            case ERROR -> "Textures/UI/error-icon.png";
+            case SUCCESS -> "Textures/UI/success-icon.png";
         };
         return new Image(new Texture(Gdx.files.internal(iconPath)));
     }

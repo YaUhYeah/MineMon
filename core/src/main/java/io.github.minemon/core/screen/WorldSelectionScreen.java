@@ -35,7 +35,7 @@ public class WorldSelectionScreen implements Screen {
     private final WorldService worldService;
     private final ScreenManager screenManager;
 
-    @Value("${world.saveDir:assets/save/worlds/}")
+    @Value("${world.saveDir:save/worlds/}")
     private String saveDir;
 
     private Stage stage;
@@ -63,7 +63,7 @@ public class WorldSelectionScreen implements Screen {
 
         stage = new Stage(new ScreenViewport());
         Gdx.input.setInputProcessor(stage);
-        skin = new Skin(Gdx.files.internal("assets/Skins/uiskin.json"));
+        skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
 
         createUI();
         refreshWorldList();
@@ -227,7 +227,7 @@ public class WorldSelectionScreen implements Screen {
             icon = new Image(new TextureRegion(tex));
         } else {
 
-            FileHandle fallbackFile = Gdx.files.internal("assets/icons/default_world_icon.png");
+            FileHandle fallbackFile = Gdx.files.internal("icons/default_world_icon.png");
             Texture fallback = new Texture(fallbackFile);
             icon = new Image(new TextureRegion(fallback));
         }

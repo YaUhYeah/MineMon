@@ -18,7 +18,7 @@ public class ServerListView extends Table {
     private static final float ROW_HEIGHT = 80f;
     private static final float ICON_SIZE = 48f;
     private static final float PADDING = 10f;
-    private static final String DEFAULT_ICON_PATH = "assets/icons/default-server-icon.png";
+    private static final String DEFAULT_ICON_PATH = "icons/default-server-icon.png";
     private static final String DEFAULT_MOTD = "No message of the day provided.";
 
     private final Skin skin;

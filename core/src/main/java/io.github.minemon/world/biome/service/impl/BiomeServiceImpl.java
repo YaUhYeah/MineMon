@@ -46,7 +46,7 @@ public class BiomeServiceImpl implements BiomeService {
     @PostConstruct
     @Override
     public void init() {
-        this.biomes = configurationLoader.loadBiomes("assets/config/biomes.json");
+        this.biomes = configurationLoader.loadBiomes("config/biomes.json");
         if (biomes.isEmpty()) {
             log.warn("No biomes loaded - using defaults.");
         } else {
@@ -84,7 +84,7 @@ public class BiomeServiceImpl implements BiomeService {
         return new BiomeTransitionResult(getBiome(primaryType), null, 1.0f);
     }
 
-    
+
     private float computeTransitionFactor(double temperature, double moisture, double threshold) {
 
         double tempDelta = Math.abs(temperature - 0.5);
@@ -95,13 +95,13 @@ public class BiomeServiceImpl implements BiomeService {
         return (float) Math.min(Math.max(factor, 0.0), 1.0);
     }
 
-    
+
     private boolean shouldBlendBiomes(double temperature, double moisture, double transitionThreshold) {
         return (Math.abs(temperature - 0.5) < transitionThreshold ||
                 Math.abs(moisture - 0.5) < transitionThreshold);
     }
 
-    
+
     private BiomeType determineBiomeType(double temperature, double moisture) {
 
         if (temperature < 0.35) {
@@ -113,7 +113,7 @@ public class BiomeServiceImpl implements BiomeService {
         }
     }
 
-    
+
     private float[] domainWarp(float x, float y) {
         float[] warped = new float[]{x, y};
         float amplitude = WARP_STRENGTH;
@@ -132,7 +132,7 @@ public class BiomeServiceImpl implements BiomeService {
         return warped;
     }
 
-    
+
     private double getNoiseValue(float x, float y, long seed, float scale) {
         double value = 0;
         double amplitude = 1.0;
@@ -152,7 +152,7 @@ public class BiomeServiceImpl implements BiomeService {
         return Math.max(0.0, Math.min(1.0, Math.pow(value, 1.1)));
     }
 
-    
+
     private boolean areCompatibleBiomes(BiomeType a, BiomeType b) {
         if (a == b) return true;
 

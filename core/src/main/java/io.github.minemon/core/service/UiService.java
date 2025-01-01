@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 @Getter
 @Service
 public class UiService {
-    private static final String UI_SKIN_PATH = "assets/Skins/uiskin.json";
+    private static final String UI_SKIN_PATH = "Skins/uiskin.json";
     private Skin skin;
     private DialogFactory dialogFactory;
     private StyleFactory styleFactory;

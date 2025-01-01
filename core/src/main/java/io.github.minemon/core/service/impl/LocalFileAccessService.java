@@ -10,7 +10,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 @Service
-@Profile("server")
 public class LocalFileAccessService implements FileAccessService {
 
     @Override

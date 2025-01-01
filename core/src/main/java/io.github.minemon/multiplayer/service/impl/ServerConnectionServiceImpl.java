@@ -2,8 +2,8 @@ package io.github.minemon.multiplayer.service.impl;
 
 import com.badlogic.gdx.utils.Json;
 import io.github.minemon.multiplayer.model.ServerConnectionConfig;
-import io.github.minemon.multiplayer.service.ServerConnectionService;
 import io.github.minemon.core.service.FileAccessService;
+import io.github.minemon.multiplayer.service.ServerConnectionService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
@@ -14,7 +14,6 @@ import java.util.List;
 
 @Service
 @Primary
-@Profile("client")
 public class ServerConnectionServiceImpl implements ServerConnectionService {
 
     private final List<ServerConnectionConfig> serverList = new ArrayList<>();

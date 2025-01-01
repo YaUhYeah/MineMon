@@ -127,7 +127,7 @@ public class GameScreen implements Screen {
 
     private void initializeUI() {
         pauseStage = new Stage(new ScreenViewport());
-        pauseSkin = new Skin(Gdx.files.internal("assets/Skins/uiskin.json"));
+        pauseSkin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
 
         pauseOverlay = new Image(new NinePatch(pauseSkin.getSprite("white"), 0, 0, 0, 0));
         pauseOverlay.setColor(new Color(0, 0, 0, 0.6f));
@@ -138,7 +138,7 @@ public class GameScreen implements Screen {
         setupPauseMenu();
 
         hudStage = new Stage(new ScreenViewport());
-        hudSkin = new Skin(Gdx.files.internal("assets/Skins/uiskin.json"));
+        hudSkin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
 
         chatTable = new ChatTable(hudSkin, chatService);
         chatTable.setPosition(10, Gdx.graphics.getHeight() - 210);

@@ -32,7 +32,7 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
 
     private static final float MIN_WIDTH = 800;
     private static final float MIN_HEIGHT = 480;
-    private static final String BACKGROUND_PATH = "assets/Textures/UI/ethereal.png";
+    private static final String BACKGROUND_PATH = "Textures/UI/ethereal.png";
 
     private final AudioService audioService;
     private final ScreenManager screenManager;

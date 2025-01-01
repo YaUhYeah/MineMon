@@ -16,6 +16,15 @@ plugins {
 }
 apply plugin: 'io.github.fourlastor.construo'
 
+sourceSets {
+  main {
+    java {
+      srcDirs = ['src']
+      // Exclude any server-specific packages:
+      exclude 'io/github/minemon/world/service/impl/Server**'
+    }
+  }
+}
 
 import io.github.fourlastor.construo.Target
 

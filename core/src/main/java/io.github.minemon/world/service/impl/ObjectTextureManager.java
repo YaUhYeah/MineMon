@@ -18,7 +18,7 @@ public class ObjectTextureManager {
     private final Map<String, TextureRegion> regionCache = new HashMap<>();
     private boolean initialized = false;
 
-    
+
     public void initializeIfNeeded() {
         if (initialized) return;
 
@@ -27,7 +27,7 @@ public class ObjectTextureManager {
             return;
         }
 
-        String ATLAS_PATH = "assets/atlas/tiles-gfx-atlas.atlas";
+        String ATLAS_PATH = "atlas/tiles-gfx-atlas.atlas";
         if (!Gdx.files.internal(ATLAS_PATH).exists()) {
             log.error("Atlas file not found at: {}", ATLAS_PATH);
         } else {
@@ -37,7 +37,7 @@ public class ObjectTextureManager {
         }
     }
 
-    
+
     public TextureRegion getTexture(String name) {
         if (!initialized || atlas == null) {
             log.warn("ObjectTextureManager not initialized or atlas not loaded. Name: {}", name);

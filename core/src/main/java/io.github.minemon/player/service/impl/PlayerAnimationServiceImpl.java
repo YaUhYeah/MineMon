@@ -68,7 +68,7 @@ public class PlayerAnimationServiceImpl implements PlayerAnimationService {
     }
 
     private void loadAnimations() {
-        String atlasPath = "assets/atlas/boy-gfx-atlas.atlas";
+        String atlasPath = "atlas/boy-gfx-atlas.atlas";
         log.info("Loading TextureAtlas from path: {}", atlasPath);
         TextureAtlas atlas = new TextureAtlas(Gdx.files.internal(atlasPath));
 

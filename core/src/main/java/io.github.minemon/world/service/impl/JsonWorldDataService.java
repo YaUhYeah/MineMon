@@ -22,7 +22,6 @@ import java.util.List;
  * Now it references "saveDir" (by default "assets/save/worlds"),
  * ensuring we store everything in the same place used for icon.png
  */
-@Service
 @Slf4j
 public class JsonWorldDataService {
     private final String baseWorldsDir;
@@ -80,11 +79,12 @@ public class JsonWorldDataService {
 
 
     public JsonWorldDataService(
-            @Value("${world.saveDir:assets/save/worlds/}") String baseWorldsDir
+            @Value("${world.saveDir:save/worlds/}") String baseWorldsDir,
+            @Value("${server.isServer:false}") boolean isServer
     ) {
-        this.isServer = "server".equals(System.getProperty("spring.profiles.active"));
+        this.isServer = isServer;
         log.info("JsonWorldDataService initialized with isServer={}", isServer);
-        this.baseWorldsDir = baseWorldsDir; // e.g. "assets/save/worlds"
+        this.baseWorldsDir = baseWorldsDir;
         this.json = new Json();
         this.json.setIgnoreUnknownFields(true);
     }

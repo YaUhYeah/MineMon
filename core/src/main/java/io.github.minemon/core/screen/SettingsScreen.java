@@ -28,7 +28,7 @@ public class SettingsScreen implements Screen {
     @Override
     public void show() {
         stage = new Stage(new ScreenViewport());
-        skin = new Skin(Gdx.files.internal("assets/Skins/uiskin.json"));
+        skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
 
 
         isGameScreen = screenManager.getPreviousScreen() instanceof GameScreen;

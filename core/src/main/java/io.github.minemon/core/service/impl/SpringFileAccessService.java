@@ -13,7 +13,6 @@ import java.nio.file.Paths;
 
 @Service
 @Primary
-@Profile("client")
 public class SpringFileAccessService implements FileAccessService {
 
     public SpringFileAccessService() {

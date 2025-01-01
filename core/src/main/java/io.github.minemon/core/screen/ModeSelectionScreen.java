@@ -36,7 +36,7 @@ public class ModeSelectionScreen implements Screen {
 
         stage = new Stage(new ScreenViewport());
         Gdx.input.setInputProcessor(stage);
-        skin = new Skin(Gdx.files.internal("assets/Skins/uiskin.json"));
+        skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
 
         createMainMenu();
         createSettingsWindow();

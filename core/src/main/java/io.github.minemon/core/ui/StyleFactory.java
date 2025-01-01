@@ -33,11 +33,11 @@ public class StyleFactory {
     }
 
     public Drawable createPanelBackground() {
-        return new TextureRegionDrawable(new Texture(Gdx.files.internal("assets/Textures/UI/window.png")));
+        return new TextureRegionDrawable(new Texture(Gdx.files.internal("Textures/UI/window.png")));
     }
 
     private Drawable createButtonBackground() {
-        Texture buttonTexture = new Texture(Gdx.files.internal("assets/Textures/UI/hotbar_bg.png"));
+        Texture buttonTexture = new Texture(Gdx.files.internal("Textures/UI/hotbar_bg.png"));
         TextureRegionDrawable drawable = new TextureRegionDrawable(buttonTexture);
         drawable.setMinWidth(150);
         drawable.setMinHeight(50);
