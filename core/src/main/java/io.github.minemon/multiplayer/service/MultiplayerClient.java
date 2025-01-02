@@ -15,6 +15,8 @@ public interface MultiplayerClient {
         void onCreateUserResponse(boolean success, String message);
     }
 
+    void clearPendingChunkRequests();
+
     void setLoginResponseListener(LoginResponseListener listener);
     void setCreateUserResponseListener(CreateUserResponseListener listener);
     void connect(String serverIP, int tcpPort, int udpPort);

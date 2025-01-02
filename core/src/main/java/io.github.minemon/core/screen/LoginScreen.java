@@ -553,6 +553,7 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
 
         stage.act(delta);
         stage.draw();
+        audioService.update(delta);
     }
 
     @Override

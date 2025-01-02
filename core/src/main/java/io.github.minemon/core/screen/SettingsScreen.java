@@ -7,10 +7,12 @@ import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.utils.Align;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
+import io.github.minemon.audio.service.AudioService;
 import io.github.minemon.core.service.BackgroundService;
 import io.github.minemon.core.service.ScreenManager;
 import io.github.minemon.core.service.SettingsService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -24,6 +26,8 @@ public class SettingsScreen implements Screen {
     private Skin skin;
     private Window settingsWindow;
     private boolean isGameScreen;
+    @Autowired
+    private AudioService audioService;
 
     @Override
     public void show() {
@@ -62,20 +66,20 @@ public class SettingsScreen implements Screen {
 
         content.add("Audio Settings").colspan(2).align(Align.left).row();
         addVolumeSlider(content, "Music Volume", settingsService.getMusicVolume(),
-                settingsService::updateMusicVolume);
+            settingsService::updateMusicVolume);
         addVolumeSlider(content, "Sound Volume", settingsService.getSoundVolume(),
-                settingsService::updateSoundVolume);
+            settingsService::updateSoundVolume);
 
         content.add().row();
 
 
         content.add("Video Settings").colspan(2).align(Align.left).row();
         addCheckbox(content, "VSync", settingsService.getVSync(),
-                settingsService::updateVSync);
+            settingsService::updateVSync);
         addCheckbox(content, "Particles", settingsService.getSettings().isParticles(),
-                settingsService::updateParticles);
+            settingsService::updateParticles);
         addCheckbox(content, "Smooth Lighting", settingsService.getSettings().isSmoothLighting(),
-                settingsService::updateSmoothLighting);
+            settingsService::updateSmoothLighting);
 
 
         content.add("Controls").colspan(2).align(Align.left).row();
@@ -100,8 +104,8 @@ public class SettingsScreen implements Screen {
 
 
         settingsWindow.setPosition(
-                (Gdx.graphics.getWidth() - settingsWindow.getWidth()) / 2,
-                (Gdx.graphics.getHeight() - settingsWindow.getHeight()) / 2
+            (Gdx.graphics.getWidth() - settingsWindow.getWidth()) / 2,
+            (Gdx.graphics.getHeight() - settingsWindow.getHeight()) / 2
         );
 
         stage.addActor(settingsWindow);
@@ -115,11 +119,21 @@ public class SettingsScreen implements Screen {
         slider.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
-                listener.onVolumeChanged(slider.getValue());
+                float newValue = slider.getValue();
+                // 1) Update SettingsService
+                listener.onVolumeChanged(newValue);
+
+                // 2) Also update the AudioService instantly
+                if ("Music Volume".equals(label)) {
+                    audioService.setMusicVolume(newValue);
+                } else if ("Sound Volume".equals(label)) {
+                    audioService.setSoundVolume(newValue);
+                }
             }
         });
         table.add(slider).width(200).row();
     }
+
 
     private void addCheckbox(Table table, String label, boolean initialValue,
                              CheckboxChangeListener listener) {
@@ -137,8 +151,8 @@ public class SettingsScreen implements Screen {
     private void addKeyBinding(Table table, String label, String binding) {
         table.add(label).left();
         TextButton bindButton = new TextButton(
-                Input.Keys.toString(settingsService.getKeyBindings().get(binding)),
-                skin
+            Input.Keys.toString(settingsService.getKeyBindings().get(binding)),
+            skin
         );
 
         bindButton.addListener(new ChangeListener() {
@@ -189,8 +203,8 @@ public class SettingsScreen implements Screen {
     public void resize(int width, int height) {
         stage.getViewport().update(width, height, true);
         settingsWindow.setPosition(
-                (width - settingsWindow.getWidth()) / 2,
-                (height - settingsWindow.getHeight()) / 2
+            (width - settingsWindow.getWidth()) / 2,
+            (height - settingsWindow.getHeight()) / 2
         );
     }
 

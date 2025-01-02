@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 public interface WorldService {
+    void clearWorldData();
     void initIfNeeded();
     WorldData getWorldData();
     boolean isMultiplayerMode();

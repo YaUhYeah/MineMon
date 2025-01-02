@@ -299,21 +299,19 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     public TileManager getTileManager() {
         return this.tileManager;
     }
-
+    private boolean disconnectHandled = false;
 
     @Override
     public void loadWorld(String worldName) {
-        // Clear existing world data completely
+        // Reset disconnect handling flag
+        disconnectHandled = false;
+
+        // Clear any existing world state
         clearWorldData();
 
-        // Reset multiplayer mode
-        boolean wasMultiplayer = isMultiplayerMode();
-        if (wasMultiplayer) {
-            setMultiplayerMode(false);
-            log.info("Resetting from multiplayer mode to singleplayer mode");
-        }
+        // Set to singleplayer mode
+        setMultiplayerMode(false);
 
-        // Load the world
         try {
             jsonWorldDataService.loadWorld(worldName, worldData);
             worldData.setLastPlayed(System.currentTimeMillis());
@@ -324,16 +322,31 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         }
     }
 
-    private void clearWorldData() {
+    public void handleDisconnect() {
+        if (!disconnectHandled && isMultiplayerMode()) {
+            disconnectHandled = true;
+            // Clear world data
+            clearWorldData();
+            // Set multiplayer mode to false
+            setMultiplayerMode(false);
+        }
+    }
+    @Override
+    public void clearWorldData() {
+        // Reset all world data
         worldData.getChunks().clear();
         worldData.getPlayers().clear();
-        worldData.setSeed(0);
         worldData.setWorldName(null);
+        worldData.setSeed(0);
         worldData.setCreatedDate(0);
         worldData.setLastPlayed(0);
         worldData.setPlayedTime(0);
-        initialized = false; // Force reinitialization
-        log.debug("Cleared world data state");
+        initialized = false;
+
+        // Clear any chunk requests
+        if (multiplayerClient != null) {
+            multiplayerClient.clearPendingChunkRequests();
+        }
     }
 
     @Override
@@ -439,6 +452,9 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     @Override
     public Map<String, ChunkData> getVisibleChunks(Rectangle viewBounds) {
+        if (worldData.getWorldName() == null || worldData.getWorldName().isEmpty()) {
+            return new HashMap<>();
+        }
         Map<String, ChunkData> visibleChunks = new HashMap<>();
         int startChunkX = (int) Math.floor(viewBounds.x / (CHUNK_SIZE * TILE_SIZE));
         int startChunkY = (int) Math.floor(viewBounds.y / (CHUNK_SIZE * TILE_SIZE));
@@ -517,6 +533,9 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     @Override
     public List<WorldObject> getVisibleObjects(Rectangle viewBounds) {
+        if (worldData.getWorldName() == null || worldData.getWorldName().isEmpty()) {
+            return Collections.emptyList();
+        }
         List<WorldObject> visibleObjects = new ArrayList<>();
         Map<String, ChunkData> visibleChunks = getVisibleChunks(viewBounds);
         for (ChunkData chunk : visibleChunks.values()) {

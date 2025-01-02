@@ -309,6 +309,17 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         return visibleChunks;
     }
 
+    @Override
+    public void clearWorldData() {
+        worldData.getChunks().clear();
+        worldData.getPlayers().clear();
+        worldData.setWorldName(null);
+        worldData.setSeed(0);
+        worldData.setCreatedDate(0);
+        worldData.setLastPlayed(0);
+        worldData.setPlayedTime(0);
+        initialized = false;
+    }
 
     @Override
     public void setPlayerData(PlayerData pd) {

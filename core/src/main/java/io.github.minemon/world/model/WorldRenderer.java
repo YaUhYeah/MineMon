@@ -1,13 +1,18 @@
 package io.github.minemon.world.model;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
+import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.world.service.TileManager;
 import io.github.minemon.world.service.WorldService;
 import io.github.minemon.world.service.impl.ObjectTextureManager;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.Comparator;
@@ -20,16 +25,16 @@ public class WorldRenderer {
     private static final int CHUNK_SIZE = 16;
 
     private static final int VIEW_PADDING = 5;
-
+    private static final Color VOID_COLOR = new Color(0.1f, 0.1f, 0.1f, 1f); // Dark gray for unloaded chunks
     private final TileManager tileManager;
     private final WorldService worldService;
-
     private final ObjectTextureManager objectTextureManager;
-
     private SpriteBatch batch;
     private boolean initialized = false;
-
     private float currentDelta = 0f;
+    @Autowired
+    @Lazy
+    private MultiplayerClient multiplayerClient;
 
     public WorldRenderer(WorldService worldService, TileManager tileManager, ObjectTextureManager objectTextureManager) {
         this.worldService = worldService;
@@ -48,6 +53,17 @@ public class WorldRenderer {
         if (!initialized) {
             initialize();
         }
+
+        // Add safety check for world data
+        if (worldService.getWorldData() == null ||
+            worldService.getWorldData().getWorldName() == null ||
+            worldService.getWorldData().getWorldName().isEmpty()) {
+            // Just clear the screen if no valid world data
+            Gdx.gl.glClearColor(0, 0, 0, 1);
+            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+            return;
+        }
+
         currentDelta = delta;
         worldService.setCamera(camera);
         batch.setProjectionMatrix(camera.combined);
@@ -74,48 +90,71 @@ public class WorldRenderer {
         float height = camera.viewportHeight * camera.zoom;
 
         return new Rectangle(
-                camera.position.x - (width / 2) - (TILE_SIZE * VIEW_PADDING),
-                camera.position.y - (height / 2) - (TILE_SIZE * VIEW_PADDING),
-                width + (TILE_SIZE * VIEW_PADDING * 2),
-                height + (TILE_SIZE * VIEW_PADDING * 2)
+            camera.position.x - (width / 2) - (TILE_SIZE * VIEW_PADDING),
+            camera.position.y - (height / 2) - (TILE_SIZE * VIEW_PADDING),
+            width + (TILE_SIZE * VIEW_PADDING * 2),
+            height + (TILE_SIZE * VIEW_PADDING * 2)
         );
+    }
+
+    private void renderChunk(ChunkData chunk) {
+        if (chunk == null || chunk.getTiles() == null) return;
+
+        int chunkPixelX = chunk.getChunkX() * CHUNK_SIZE * TILE_SIZE;
+        int chunkPixelY = chunk.getChunkY() * CHUNK_SIZE * TILE_SIZE;
+
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            for (int y = 0; y < CHUNK_SIZE; y++) {
+                TextureRegion region = tileManager.getRegionForTile(chunk.getTiles()[x][y]);
+                if (region != null) {
+                    float worldX = chunkPixelX + (x * TILE_SIZE);
+                    float worldY = chunkPixelY + (y * TILE_SIZE);
+                    batch.draw(region, worldX, worldY, TILE_SIZE, TILE_SIZE);
+                }
+            }
+        }
     }
 
     private void renderGroundLayer() {
         Rectangle viewBounds = calculateViewBounds();
         Map<String, ChunkData> visibleChunks = worldService.getVisibleChunks(viewBounds);
 
-        batch.setColor(Color.WHITE);
-        for (Map.Entry<String, ChunkData> entry : visibleChunks.entrySet()) {
-            String[] coords = entry.getKey().split(",");
-            int chunkX = Integer.parseInt(coords[0]);
-            int chunkY = Integer.parseInt(coords[1]);
-            ChunkData chunkData = entry.getValue();
-
-            int[][] tiles = chunkData.getTiles();
-            if (tiles != null) {
-                for (int x = 0; x < CHUNK_SIZE; x++) {
-                    for (int y = 0; y < CHUNK_SIZE; y++) {
-                        TextureRegion region = tileManager.getRegionForTile(tiles[x][y]);
-                        if (region != null) {
-                            float worldX = (chunkX * CHUNK_SIZE + x) * TILE_SIZE;
-                            float worldY = (chunkY * CHUNK_SIZE + y) * TILE_SIZE;
-                            batch.draw(region, worldX, worldY, TILE_SIZE, TILE_SIZE);
-                        }
-                    }
+        // Draw void color for unloaded chunks
+        batch.setColor(VOID_COLOR);
+        for (int x = (int) viewBounds.x; x < viewBounds.x + viewBounds.width; x += CHUNK_SIZE * TILE_SIZE) {
+            for (int y = (int) viewBounds.y; y < viewBounds.y + viewBounds.height; y += CHUNK_SIZE * TILE_SIZE) {
+                int chunkX = x / (CHUNK_SIZE * TILE_SIZE);
+                int chunkY = y / (CHUNK_SIZE * TILE_SIZE);
+                String key = chunkX + "," + chunkY;
+                if (!visibleChunks.containsKey(key)) {
+                    batch.draw(tileManager.getRegionForTile(0), // Use a blank tile texture
+                        x, y,
+                        CHUNK_SIZE * TILE_SIZE,
+                        CHUNK_SIZE * TILE_SIZE);
                 }
             }
+        }
+
+        // Reset color and draw loaded chunks
+        batch.setColor(Color.WHITE);
+        for (ChunkData chunk : visibleChunks.values()) {
+            renderChunk(chunk);
         }
     }
 
     private void renderBelowPlayerLayer() {
+        if (worldService.getWorldData() == null ||
+            worldService.getWorldData().getWorldName() == null ||
+            worldService.getWorldData().getWorldName().isEmpty()) {
+            return;
+        }
         Rectangle viewBounds = calculateViewBounds();
         List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
 
         objects.stream()
-                .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.BELOW_PLAYER)
-                .sorted(Comparator.comparingInt(WorldObject::getTileY))
-                .forEach(this::renderObjectWithFade);
+            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.BELOW_PLAYER)
+            .sorted(Comparator.comparingInt(WorldObject::getTileY))
+            .forEach(this::renderObjectWithFade);
     }
 
     private void renderAbovePlayerLayer() {
@@ -123,9 +162,9 @@ public class WorldRenderer {
         List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
 
         objects.stream()
-                .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.ABOVE_PLAYER)
-                .sorted(Comparator.comparingInt(WorldObject::getTileY))
-                .forEach(this::renderObjectWithFade);
+            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.ABOVE_PLAYER)
+            .sorted(Comparator.comparingInt(WorldObject::getTileY))
+            .forEach(this::renderObjectWithFade);
     }
 
     private void renderTreeBases() {
@@ -133,8 +172,8 @@ public class WorldRenderer {
         List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
 
         objects.stream()
-                .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.LAYERED)
-                .forEach(this::renderTreeBase);
+            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.LAYERED)
+            .forEach(this::renderTreeBase);
     }
 
     private void renderTreeTopsForLayeredTrees() {
@@ -142,9 +181,9 @@ public class WorldRenderer {
         List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
 
         objects.stream()
-                .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.LAYERED)
-                .sorted(Comparator.comparingInt(WorldObject::getTileY))
-                .forEach(this::renderTreeTop);
+            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.LAYERED)
+            .sorted(Comparator.comparingInt(WorldObject::getTileY))
+            .forEach(this::renderTreeTop);
     }
 
     private void renderObjectWithFade(WorldObject obj) {
@@ -176,11 +215,11 @@ public class WorldRenderer {
         int baseHeight = totalHeight / 3;
 
         TextureRegion baseRegion = new TextureRegion(
-                fullTexture.getTexture(),
-                fullTexture.getRegionX(),
-                fullTexture.getRegionY() + totalHeight - baseHeight,
-                fullTexture.getRegionWidth(),
-                baseHeight
+            fullTexture.getTexture(),
+            fullTexture.getRegionX(),
+            fullTexture.getRegionY() + totalHeight - baseHeight,
+            fullTexture.getRegionWidth(),
+            baseHeight
         );
 
         float renderX = tree.getTileX() * TILE_SIZE - TILE_SIZE;
@@ -191,9 +230,9 @@ public class WorldRenderer {
         batch.setColor(c.r, c.g, c.b, alpha);
 
         batch.draw(baseRegion,
-                renderX, renderY,
-                tree.getType().getWidthInTiles() * TILE_SIZE,
-                TILE_SIZE);
+            renderX, renderY,
+            tree.getType().getWidthInTiles() * TILE_SIZE,
+            TILE_SIZE);
 
         batch.setColor(c.r, c.g, c.b, 1f);
     }
@@ -208,11 +247,11 @@ public class WorldRenderer {
         int topHeight = (totalHeight * 2) / 3;
 
         TextureRegion topRegion = new TextureRegion(
-                fullTexture.getTexture(),
-                fullTexture.getRegionX(),
-                fullTexture.getRegionY(),
-                fullTexture.getRegionWidth(),
-                topHeight
+            fullTexture.getTexture(),
+            fullTexture.getRegionX(),
+            fullTexture.getRegionY(),
+            fullTexture.getRegionWidth(),
+            topHeight
         );
 
         float renderX = tree.getTileX() * TILE_SIZE - TILE_SIZE;
@@ -223,14 +262,14 @@ public class WorldRenderer {
         batch.setColor(c.r, c.g, c.b, alpha);
 
         batch.draw(topRegion,
-                renderX, renderY,
-                tree.getType().getWidthInTiles() * TILE_SIZE,
-                TILE_SIZE * 2);
+            renderX, renderY,
+            tree.getType().getWidthInTiles() * TILE_SIZE,
+            TILE_SIZE * 2);
 
         batch.setColor(c.r, c.g, c.b, 1f);
     }
 
-    
+
     private TextureRegion getObjectTexture(WorldObject obj) {
         String regionName = obj.getType().getTextureRegionName();
         return objectTextureManager.getTexture(regionName);

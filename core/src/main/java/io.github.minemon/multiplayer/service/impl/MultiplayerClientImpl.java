@@ -31,6 +31,9 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -70,6 +73,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         return pendingChunkRequests.contains(new ChunkKey(chunkX, chunkY));
     }
 
+
     @Override
     public void requestChunk(int chunkX, int chunkY) {
         if (!connected) return;
@@ -82,11 +86,22 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             req.setTimestamp(System.currentTimeMillis());
             client.sendTCP(req);
             log.debug("Sent chunk request for ({},{})", chunkX, chunkY);
-        } else {
-            log.trace("Chunk request for ({},{}) already pending", chunkX, chunkY);
+
+            // Add timeout for chunk requests
+            scheduleChunkRequestTimeout(key);
         }
     }
 
+    private void scheduleChunkRequestTimeout(ChunkKey key) {
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.schedule(() -> {
+            if (pendingChunkRequests.remove(key)) {
+                // If request timed out, try again
+                requestChunk(key.x, key.y);
+            }
+        }, 5, TimeUnit.SECONDS);
+        scheduler.shutdown();
+    }
     @Override
     public Map<String, PlayerSyncData> getPlayerStates() {
         return playerStates;
@@ -330,6 +345,11 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     }
 
 
+    @Override
+    public void clearPendingChunkRequests() {
+        pendingChunkRequests.clear();
+    }
+
     private void handlePlayerLeave(String username) {
         playerStates.remove(username);
 
@@ -408,12 +428,12 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         return true;
     }
 
-
     @Override
     public void disconnect() {
         if (connected) {
             log.info("Disconnecting from server...");
             connected = false;
+            clearPendingChunkRequests();
             if (client != null) {
                 try {
                     client.close();

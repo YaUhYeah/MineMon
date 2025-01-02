@@ -4,10 +4,8 @@ import com.badlogic.gdx.*;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
-import com.badlogic.gdx.graphics.g2d.BitmapFont;
-import com.badlogic.gdx.graphics.g2d.NinePatch;
-import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.graphics.g2d.*;
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.*;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
@@ -19,6 +17,7 @@ import io.github.minemon.core.service.ScreenManager;
 import io.github.minemon.input.InputService;
 import io.github.minemon.multiplayer.model.PlayerSyncData;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
+import io.github.minemon.multiplayer.service.impl.ClientConnectionManager;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.player.model.PlayerDirection;
 import io.github.minemon.player.model.RemotePlayerAnimator;
@@ -30,8 +29,10 @@ import io.github.minemon.world.model.WorldRenderer;
 import io.github.minemon.world.service.ChunkLoaderService;
 import io.github.minemon.world.service.ChunkPreloaderService;
 import io.github.minemon.world.service.WorldService;
+import io.github.minemon.world.service.impl.ClientWorldServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -40,6 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 @Slf4j
 public class GameScreen implements Screen {
+    private static final int CHUNK_SIZE = 16;
     private final float TARGET_VIEWPORT_WIDTH_TILES = 24f;
     private final int TILE_SIZE = 32;
     private final PlayerService playerService;
@@ -56,8 +58,12 @@ public class GameScreen implements Screen {
     private final PlayerAnimationService animationService;
     private final Map<String, RemotePlayerModel> remoteModels = new ConcurrentHashMap<>();
     private final Map<String, RemotePlayerAnimator> remotePlayerAnimators = new ConcurrentHashMap<>();
+    private boolean handlingDisconnect = false;
     private OrthographicCamera camera;
     private SpriteBatch batch;
+    @Autowired
+    @Lazy
+    private ClientConnectionManager connectionManager;
     private BitmapFont font;
     private Stage pauseStage;
     private Skin pauseSkin;
@@ -69,7 +75,7 @@ public class GameScreen implements Screen {
     private float cameraPosX, cameraPosY;
     private Image pauseOverlay;
     private InputMultiplexer multiplexer;
-
+    private boolean initialChunksLoaded = false;
     @Autowired
     public GameScreen(PlayerService playerService,
                       WorldService worldService,
@@ -93,6 +99,21 @@ public class GameScreen implements Screen {
         this.chunkLoaderService = chunkLoaderService;
         this.multiplayerClient = client;
         this.chunkPreloaderService = chunkPreloaderService;
+    }
+
+    private void handleDisconnection() {
+        if (!handlingDisconnect && multiplayerClient != null && !multiplayerClient.isConnected()
+            && worldService.isMultiplayerMode()) {
+            handlingDisconnect = true;
+            // Save any necessary data before disconnection
+            worldService.saveWorldData();
+            // Handle the disconnection
+            ((ClientWorldServiceImpl) worldService).handleDisconnect();
+            // Show disconnect screen
+            ServerDisconnectScreen disconnectScreen = screenManager.getScreen(ServerDisconnectScreen.class);
+            disconnectScreen.setDisconnectReason("TIMEOUT");
+            screenManager.showScreen(ServerDisconnectScreen.class);
+        }
     }
 
     @Override
@@ -211,17 +232,18 @@ public class GameScreen implements Screen {
     }
 
     private void goBackToMenu() {
-        if (!worldService.isMultiplayerMode()) {
-            worldService.saveWorldData();
-        }
         if (multiplayerClient.isConnected()) {
-            screenManager.getScreen(ServerDisconnectScreen.class)
-                .setDisconnectReason("QUIT");
             multiplayerClient.disconnect();
-            log.info("Disconnected from server");
         }
 
-        togglePause();
+        // Clear world data before switching screens
+        worldService.clearWorldData();
+        worldService.setMultiplayerMode(false);
+
+        // Release the connection lock
+        connectionManager.releaseInstanceLock();
+
+        // Switch to mode selection screen
         screenManager.showScreen(ModeSelectionScreen.class);
     }
 
@@ -265,14 +287,32 @@ public class GameScreen implements Screen {
         camera.position.set(cameraPosX, cameraPosY, 0);
         camera.update();
     }
-
     @Override
     public void render(float delta) {
-        handleInput();
-        multiplayerClient.update(delta);
-        updateGame(delta);
-        preloadChunksAhead();
-        renderGame(delta);
+        // Check for disconnection first
+        handleDisconnection();
+
+        // Only proceed with normal rendering if we're not handling a disconnection
+        if (!handlingDisconnect) {
+            handleInput();
+            multiplayerClient.update(delta);
+            updateGame(delta);
+            preloadChunksAhead();
+            renderGame(delta);
+        }
+    }
+    private void renderLoadingScreen() {
+        Gdx.gl.glClearColor(0, 0, 0, 1);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+        batch.begin();
+        // Draw loading indicator
+        String loadingText = "Loading world...";
+        GlyphLayout layout = new GlyphLayout(font, loadingText);
+        font.draw(batch, loadingText,
+            (Gdx.graphics.getWidth() - layout.width) / 2,
+            (Gdx.graphics.getHeight() + layout.height) / 2);
+        batch.end();
     }
 
     private void handleInput() {
@@ -297,7 +337,32 @@ public class GameScreen implements Screen {
         PlayerData player = playerService.getPlayerData();
         float px = player.getX() * TILE_SIZE;
         float py = player.getY() * TILE_SIZE;
+
+        // Check if initial chunks are loaded
+        if (!initialChunksLoaded) {
+            boolean allLoaded = checkInitialChunksLoaded(px, py);
+            if (allLoaded) {
+                initialChunksLoaded = true;
+            }
+        }
+
         chunkPreloaderService.preloadAround(px, py);
+    }
+
+    private boolean checkInitialChunksLoaded(float px, float py) {
+        int chunkX = (int) (px / (CHUNK_SIZE * TILE_SIZE));
+        int chunkY = (int) (py / (CHUNK_SIZE * TILE_SIZE));
+
+        // Check immediate surrounding chunks
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dy = -2; dy <= 2; dy++) {
+                Vector2 chunkPos = new Vector2(chunkX + dx, chunkY + dy);
+                if (!worldService.isChunkLoaded(chunkPos)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private void updateGame(float delta) {
@@ -314,7 +379,10 @@ public class GameScreen implements Screen {
 
         pauseStage.act(delta);
         hudStage.act(delta);
-    }private void renderRemotePlayers(SpriteBatch batch, float delta) {
+        audioService.update(delta);
+    }
+
+    private void renderRemotePlayers(SpriteBatch batch, float delta) {
         Map<String, PlayerSyncData> states = multiplayerClient.getPlayerStates();
         String localUsername = playerService.getPlayerData().getUsername();
 
@@ -361,12 +429,10 @@ public class GameScreen implements Screen {
             float drawX = animator.getCurrentX();
             float drawY = animator.getCurrentY();
 
-            batch.draw(frame,
-                drawX,        // No additional offset needed - animator handles centering
-                drawY,
-                TILE_SIZE,     // Use exact tile size
-                TILE_SIZE
-            );
+            float width = frame.getRegionWidth();
+            float height = frame.getRegionHeight();
+            batch.draw(frame, drawX, drawY, width, height);
+
         }
 
         // Clean up disconnected players
@@ -385,8 +451,8 @@ public class GameScreen implements Screen {
 
         return dx > 0.001f || dy > 0.001f;
     }
+
     private void renderGame(float delta) {
-        // Clear
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
@@ -419,6 +485,7 @@ public class GameScreen implements Screen {
             renderDebugInfo();
         }
     }
+
 
     private void updateCamera() {
         float playerPixelX = playerService.getPlayerData().getX() * TILE_SIZE + TILE_SIZE / 2f;
@@ -515,8 +582,15 @@ public class GameScreen implements Screen {
     public void resume() {
     }
 
+
     @Override
     public void hide() {
+        if (multiplayerClient.isConnected()) {
+            multiplayerClient.disconnect();
+        }
+        worldService.clearWorldData();
+        audioService.stopMenuMusic();
+        handlingDisconnect = false;
     }
 
 

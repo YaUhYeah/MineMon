@@ -7,6 +7,7 @@ import com.badlogic.gdx.scenes.scene2d.Actor;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
+import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.minemon.audio.service.AudioService;
@@ -129,23 +130,31 @@ public class ModeSelectionScreen implements Screen {
         Label musicLabel = new Label("Music Volume:", skin);
         Slider musicSlider = new Slider(0, 1, 0.1f, false, skin);
         musicSlider.setValue(settingsService.getMusicVolume());
-        musicSlider.addListener(new ClickListener() {
+        musicSlider.addListener(new ChangeListener() {
             @Override
-            public void clicked(InputEvent event, float x, float y) {
-                settingsService.setMusicVolume(musicSlider.getValue());
+            public void changed(ChangeListener.ChangeEvent event, Actor actor) {
+                float newVolume = musicSlider.getValue();
+                // 1. Update in SettingsService
+                settingsService.updateMusicVolume(newVolume);
+                // 2. Also update the AudioService so the in-game volume changes
+                audioService.setMusicVolume(newVolume);
             }
         });
+
 
 
         Label soundLabel = new Label("Sound Volume:", skin);
         Slider soundSlider = new Slider(0, 1, 0.1f, false, skin);
         soundSlider.setValue(settingsService.getSoundVolume());
-        soundSlider.addListener(new ClickListener() {
+        soundSlider.addListener(new ChangeListener() {
             @Override
-            public void clicked(InputEvent event, float x, float y) {
-                settingsService.setSoundVolume(soundSlider.getValue());
+            public void changed(ChangeEvent event, Actor actor) {
+                float newVolume = soundSlider.getValue();
+                settingsService.updateSoundVolume(newVolume);
+                audioService.setSoundVolume(newVolume);
             }
         });
+
 
 
         CheckBox vsyncCheck = new CheckBox(" VSync", skin);
@@ -199,6 +208,7 @@ public class ModeSelectionScreen implements Screen {
 
         stage.act(delta);
         stage.draw();
+        audioService.update(delta);
     }
 
     @Override

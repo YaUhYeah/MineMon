@@ -14,6 +14,7 @@ import io.github.minemon.multiplayer.model.PlayerSyncData;
 import io.github.minemon.player.model.PlayerDirection;
 import io.github.minemon.server.service.MultiplayerServer;
 import io.github.minemon.server.service.MultiplayerService;
+import io.github.minemon.world.model.WorldObject;
 import io.github.minemon.world.service.WorldService;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -25,6 +26,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,6 +42,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
     private final MultiplayerService multiplayerService;
     private final EventBus eventBus;
     private final AuthService authService;
+    private static final int BUFFER_SIZE = 32768; // Increased from default 16384
     private final Map<Integer, String> connectionUserMap = new ConcurrentHashMap<>();
     private final Map<String, Map<ChunkKey, Long>> clientChunkCache = new ConcurrentHashMap<>();
     private final ScheduledExecutorService cacheCleanupExecutor =
@@ -68,8 +71,9 @@ public class MultiplayerServerImpl implements MultiplayerServer {
             return;
         }
 
-        server = new Server();
+        server = new Server(BUFFER_SIZE, BUFFER_SIZE);  // Set larger buffer sizes
         NetworkProtocol.registerClasses(server.getKryo());
+
 
         server.addListener(new Listener() {
             @Override
@@ -252,10 +256,9 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         update.setPlayers(states);
         broadcast(update);
     }
-
     private void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest req) {
         try {
-            synchronized (this) { // Synchronize the entire chunk generation process
+            synchronized (this) {
                 // First try to get existing chunk
                 ChunkUpdate chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
 
@@ -270,28 +273,31 @@ public class MultiplayerServerImpl implements MultiplayerServer {
                     chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
 
                     if (chunk == null) {
-                        log.error("Critical: Failed to generate chunk ({}, {}) after explicit generation",
-                            req.getChunkX(), req.getChunkY());
+                        log.error("Failed to generate chunk ({}, {})", req.getChunkX(), req.getChunkY());
                         return;
                     }
                 }
 
-                // Create and send chunk data response
+                // Split chunk data if too large
                 NetworkProtocol.ChunkData cd = new NetworkProtocol.ChunkData();
                 cd.setChunkX(req.getChunkX());
                 cd.setChunkY(req.getChunkY());
                 cd.setTiles(chunk.getTiles());
-                cd.setObjects(chunk.getObjects());
 
-                // Send using TCP for reliability
-                connection.sendTCP(cd);
+                // Send objects in smaller batches if needed
+                List<WorldObject> objects = chunk.getObjects();
+                int batchSize = 50; // Adjust this value based on testing
 
-                log.debug("Successfully sent chunk data for ({},{}) to client {}",
-                    req.getChunkX(), req.getChunkY(), connection.getID());
+                for (int i = 0; i < objects.size(); i += batchSize) {
+                    int end = Math.min(i + batchSize, objects.size());
+                    cd.setObjects(objects.subList(i, end));
+                    connection.sendTCP(cd);
+                }
+
             }
         } catch (Exception e) {
             log.error("Error in chunk generation for ({},{}): {}",
-                req.getChunkX(), req.getChunkY(), e.getMessage(), e);
+                req.getChunkX(), req.getChunkY(), e.getMessage());
         }
     }
 
