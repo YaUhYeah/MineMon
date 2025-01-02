@@ -214,8 +214,9 @@ public class GameScreen implements Screen {
         if (!worldService.isMultiplayerMode()) {
             worldService.saveWorldData();
         }
-
         if (multiplayerClient.isConnected()) {
+            screenManager.getScreen(ServerDisconnectScreen.class)
+                .setDisconnectReason("QUIT");
             multiplayerClient.disconnect();
             log.info("Disconnected from server");
         }
@@ -313,36 +314,42 @@ public class GameScreen implements Screen {
 
         pauseStage.act(delta);
         hudStage.act(delta);
-    }
-    private void renderRemotePlayers(SpriteBatch batch, float delta) {
+    }private void renderRemotePlayers(SpriteBatch batch, float delta) {
         Map<String, PlayerSyncData> states = multiplayerClient.getPlayerStates();
         String localUsername = playerService.getPlayerData().getUsername();
 
         // Process all remote players
         for (Map.Entry<String, PlayerSyncData> entry : states.entrySet()) {
             String otherUsername = entry.getKey();
-            // Skip local player
             if (otherUsername.equals(localUsername)) continue;
 
             PlayerSyncData psd = entry.getValue();
 
-            // Get or create the animator for this player
             RemotePlayerAnimator animator = remotePlayerAnimators.computeIfAbsent(
                 otherUsername,
-                k -> new RemotePlayerAnimator()
+                k -> {
+                    RemotePlayerAnimator newAnimator = new RemotePlayerAnimator();
+                    // Initialize at exact position to avoid interpolation at start
+                    newAnimator.setPosition(psd.getX() * TILE_SIZE, psd.getY() * TILE_SIZE);
+                    return newAnimator;
+                }
             );
 
-            // Update animator state with server's movement state
+            // Get exact tile-centered position
+            float targetTileX = psd.getX() * TILE_SIZE;
+            float targetTileY = psd.getY() * TILE_SIZE;
+
+            // Update animator with exact tile positions
             animator.updateState(
-                psd.getX() * TILE_SIZE,
-                psd.getY() * TILE_SIZE,
+                targetTileX,
+                targetTileY,
                 psd.isRunning(),
                 PlayerDirection.valueOf(psd.getDirection().toUpperCase()),
-                psd.isMoving(),
+                psd.isMoving() && isTrulyMoving(psd), // Additional movement check
                 delta
             );
 
-            // Get the current animation frame
+            // Get animation frame
             TextureRegion frame = animationService.getCurrentFrame(
                 animator.getDirection(),
                 animator.isMoving(),
@@ -350,25 +357,33 @@ public class GameScreen implements Screen {
                 animator.getAnimationTime()
             );
 
-            // Draw the player with exact TILE_SIZE dimensions
+            // Draw centered on tile
             float drawX = animator.getCurrentX();
             float drawY = animator.getCurrentY();
 
-            // Apply any offset needed to center the sprite
-            float offsetX = (TILE_SIZE - frame.getRegionWidth()) / 2f;
-            float offsetY = (TILE_SIZE - frame.getRegionHeight()) / 2f;
-
-            // Draw with exact tile dimensions
             batch.draw(frame,
-                drawX + offsetX,
-                drawY + offsetY,
-                frame.getRegionWidth(),
-                frame.getRegionHeight()
+                drawX,        // No additional offset needed - animator handles centering
+                drawY,
+                TILE_SIZE,     // Use exact tile size
+                TILE_SIZE
             );
         }
 
         // Clean up disconnected players
         remotePlayerAnimators.keySet().removeIf(username -> !states.containsKey(username));
+    }
+
+    // Helper method to determine if a player is actually moving
+    private boolean isTrulyMoving(PlayerSyncData psd) {
+        float lastX = psd.getLastX();
+        float lastY = psd.getLastY();
+        float currentX = psd.getX();
+        float currentY = psd.getY();
+
+        float dx = Math.abs(currentX - lastX);
+        float dy = Math.abs(currentY - lastY);
+
+        return dx > 0.001f || dy > 0.001f;
     }
     private void renderGame(float delta) {
         // Clear

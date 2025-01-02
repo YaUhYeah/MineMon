@@ -9,6 +9,8 @@ import lombok.Setter;
 public class PlayerSyncData {
     private String username;
     private float x;
+    private float lastX;
+    private float lastY;
     private float y;
     private boolean running;
     private String direction;
