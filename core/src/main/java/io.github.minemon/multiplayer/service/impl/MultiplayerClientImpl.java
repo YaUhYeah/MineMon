@@ -14,7 +14,6 @@ import io.github.minemon.core.service.ScreenManager;
 import io.github.minemon.multiplayer.model.ChunkUpdate;
 import io.github.minemon.multiplayer.model.PlayerSyncData;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
-import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.world.model.ObjectType;
 import io.github.minemon.world.model.WorldObject;
 import io.github.minemon.world.service.WorldService;
@@ -267,25 +266,34 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             for (Map.Entry<String, PlayerSyncData> entry : pUpdate.getPlayers().entrySet()) {
                 String username = entry.getKey();
                 PlayerSyncData newState = entry.getValue();
-                PlayerSyncData currentState = playerStates.get(username);
+                PlayerSyncData oldState = playerStates.get(username);
 
-                if (currentState != null) {
-                    // Compare actual positions to determine movement
-                    boolean positionChanged = Math.abs(currentState.getX() - newState.getX()) > 0.001f ||
-                        Math.abs(currentState.getY() - newState.getY()) > 0.001f;
+                // If we have an old state, compare positions
+                if (oldState != null) {
+                    float dx = Math.abs(oldState.getX() - newState.getX());
+                    float dy = Math.abs(oldState.getY() - newState.getY());
+                    boolean posChanged = dx > 0.001f || dy > 0.001f;
 
-                    // Update movement state based on server's state directly
-                    newState.setMoving(positionChanged);
+                    log.debug("Player {}: pos change={}, old=({},{}), new=({},{}), moving={}",
+                        username, posChanged, oldState.getX(), oldState.getY(),
+                        newState.getX(), newState.getY(), newState.isMoving());
 
-                    if (!positionChanged && currentState.isMoving()) {
+                    // Update movement based on actual position change
+                    newState.setMoving(posChanged);
+
+                    // Reset animation if we stopped moving
+                    if (!posChanged && newState.isMoving()) {
                         newState.setMoving(false);
                         newState.setAnimationTime(0f);
-                    } else if (positionChanged) {
-                        newState.setAnimationTime(currentState.getAnimationTime());
                     }
                 }
+
+                // Update the states map with the new state
+                playerStates.put(username, newState);
             }
-            // Update states
+
+            // Broadcast updated player list for UI
+            log.debug("Total players in update: {}", pUpdate.getPlayers().size());
             playerStates.clear();
             playerStates.putAll(pUpdate.getPlayers());
 
@@ -344,21 +352,45 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             log.info("Received ChatMessage from {}: {}", chatMsg.getSender(), chatMsg.getContent());
             eventPublisher.publishEvent(new ChatMessageReceivedEvent(this, chatMsg));
         }else if (object instanceof NetworkProtocol.ServerShutdownNotice notice) {
-            Gdx.app.postRunnable(() -> {
-                screenManager.showScreen(ServerDisconnectScreen.class);
-            });
+            if (screenManager != null) {
+                Gdx.app.postRunnable(() -> {
+                    disconnect();  // Make sure we disconnect
+                    screenManager.showScreen(ServerDisconnectScreen.class);
+                });
+            }
         } else {
             log.warn("Unknown message type received: {}", object.getClass().getName());
         }
     }
 
+    private boolean checkServerConnection() {
+        if (!connected || client == null) {
+            log.debug("Lost connection to server");
+            Gdx.app.postRunnable(() -> {
+                disconnect();  // Clean disconnect
+                screenManager.showScreen(ServerDisconnectScreen.class);
+            });
+            return false;
+        }
+        return true;
+    }
+
 
     @Override
     public void disconnect() {
-        if (client != null && connected) {
-            client.close();
+        if (connected) {
+            log.info("Disconnecting from server...");
             connected = false;
-            log.info("Client disconnected from server.");
+            if (client != null) {
+                try {
+                    client.close();
+                } catch (Exception e) {
+                    log.error("Error closing client: {}", e.getMessage());
+                }
+                client.stop();
+                client = null;
+            }
+            playerStates.clear();
         }
     }
 
@@ -381,14 +413,19 @@ public class MultiplayerClientImpl implements MultiplayerClient {
 
     @Override
     public void update(float delta) {
+        // First check connection
+        if (!checkServerConnection()) {
+            return;
+        }
+
+        // Update player states
         for (PlayerSyncData psd : playerStates.values()) {
             boolean directionChanged = !psd.getDirection().equals(psd.getLastDirection());
             boolean movementChanged = (psd.isMoving() != psd.isWasMoving());
 
             if (directionChanged || movementChanged) {
                 psd.setAnimationTime(0f);
-            }
-            else if (psd.isMoving()) {
+            } else if (psd.isMoving()) {
                 psd.setAnimationTime(psd.getAnimationTime() + delta);
             }
 
@@ -396,8 +433,6 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             psd.setLastDirection(psd.getDirection());
         }
     }
-
-
     @Override
     public void sendMessage(Object msg) {
         if (!connected) return;

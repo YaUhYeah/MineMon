@@ -339,51 +339,51 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         running = false;
 
         try {
-            // 1. Notify clients of shutdown
+            // 1. Send shutdown notice to all clients
             NetworkProtocol.ServerShutdownNotice notice = new NetworkProtocol.ServerShutdownNotice();
             notice.setMessage("Server is shutting down...");
             notice.setReason(NetworkProtocol.ServerShutdownNotice.ShutdownReason.NORMAL_SHUTDOWN);
-            broadcast(notice);
 
-            // 2. Wait briefly for clients to receive the notification
-            Thread.sleep(500);
+            // Force TCP send to ensure delivery
+            for (Connection conn : server.getConnections()) {
+                try {
+                    conn.sendTCP(notice);
+                } catch (Exception e) {
+                    log.error("Failed to send shutdown notice to connection {}: {}",
+                        conn.getID(), e.getMessage());
+                }
+            }
 
-            // 3. Save all player states
-            for (String username : connectionUserMap.values()) {
-                PlayerData pd = worldService.getPlayerData(username);
-                if (pd != null) {
-                    worldService.setPlayerData(pd);
+            // 2. Give clients time to process the shutdown notice
+            Thread.sleep(1000);
+
+            // 3. Forcefully disconnect all clients
+            for (Connection conn : server.getConnections()) {
+                try {
+                    conn.close();
+                } catch (Exception e) {
+                    log.error("Error closing connection {}: {}", conn.getID(), e.getMessage());
                 }
             }
 
             // 4. Save world state
             worldService.saveWorldData();
 
-            // 5. Close all connections
-            for (Connection conn : server.getConnections()) {
-                try {
-                    conn.close();
-                } catch (Exception e) {
-                    log.error("Error closing connection: {}", e.getMessage());
-                }
-            }
-
-            // 6. Stop the server
+            // 5. Stop the server
             server.stop();
             server.close();
-            server = null;
 
-            // 7. Clean up resources
-            chunkRequestTimes.clear();
-            pendingChunkRequests.clear();
-            clientChunkCache.clear();
+            // 6. Clear all maps
             connectionUserMap.clear();
+            clientChunkCache.clear();
             activeUsers.clear();
 
-            log.info("Server shutdown completed successfully");
+            log.info("Server shutdown completed");
 
         } catch (Exception e) {
             log.error("Error during server shutdown: {}", e.getMessage(), e);
+        } finally {
+            server = null;
         }
     }
 

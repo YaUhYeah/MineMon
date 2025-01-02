@@ -309,18 +309,35 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         return visibleChunks;
     }
 
+
     @Override
     public void setPlayerData(PlayerData pd) {
+        if (pd == null) return;
+
+        log.debug("Setting player data for {}: pos=({},{}), moving={}",
+            pd.getUsername(), pd.getX(), pd.getY(), pd.isMoving());
+
+        // Get previous state if exists
+        PlayerData oldData = getPlayerData(pd.getUsername());
+        if (oldData != null) {
+            float dx = Math.abs(oldData.getX() - pd.getX());
+            float dy = Math.abs(oldData.getY() - pd.getY());
+            boolean posChanged = dx > 0.001f || dy > 0.001f;
+
+            log.debug("Position changed={}, dx={}, dy={}", posChanged, dx, dy);
+            pd.setMoving(posChanged);
+        }
+
         WorldData wd = loadedWorlds.get("serverWorld");
-        if (wd == null) return;
-        wd.getPlayers().put(pd.getUsername(), pd);
-        try {
-            jsonWorldDataService.savePlayerData("serverWorld", pd);
-        } catch (IOException e) {
-            e.printStackTrace();
+        if (wd != null) {
+            wd.getPlayers().put(pd.getUsername(), pd);
+            try {
+                jsonWorldDataService.savePlayerData("serverWorld", pd);
+            } catch (IOException e) {
+                log.error("Failed to save player data: {}", e.getMessage());
+            }
         }
     }
-
 
     @Override
     public PlayerData getPlayerData(String username) {

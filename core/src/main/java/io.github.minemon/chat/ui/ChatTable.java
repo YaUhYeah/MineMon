@@ -24,7 +24,6 @@ public class ChatTable extends Table implements ChatListener {
         super(skin);
         this.skin = skin;
         this.chatService = chatService;
-
         this.chatService.addListener(this);
 
         setFillParent(false);
@@ -97,9 +96,12 @@ public class ChatTable extends Table implements ChatListener {
 
         messageTable.add(msgTable).expandX().fillX().padBottom(2).row();
 
-        // Scroll to the bottom after adding a new message
-        messageScroll.layout();
-        messageScroll.scrollTo(0, messageTable.getHeight(), 0, 0);
+        // Delay the scroll to ensure the layout is updated
+        Gdx.app.postRunnable(() -> {
+            messageTable.layout();
+            messageScroll.layout();
+            messageScroll.scrollTo(0, 0, 0, 0);
+        });
     }
 
     public void activate() {
@@ -126,5 +128,17 @@ public class ChatTable extends Table implements ChatListener {
     }
 
     public void updateMessages() {
+        Gdx.app.postRunnable(() -> {
+            messageTable.layout();
+            messageScroll.layout();
+            messageScroll.scrollTo(0, 0, 0, 0);
+        });
+    }
+
+    @Override
+    public void layout() {
+        super.layout();
+        // Ensure scroll is at bottom after layout changes
+        messageScroll.scrollTo(0, 0, 0, 0);
     }
 }
