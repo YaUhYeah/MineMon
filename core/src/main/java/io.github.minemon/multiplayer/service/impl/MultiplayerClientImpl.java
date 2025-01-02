@@ -25,6 +25,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -83,6 +84,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             log.trace("Chunk request for ({},{}) already pending", chunkX, chunkY);
         }
     }
+    private final Set<String> processedLeaves = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     @Autowired
     public MultiplayerClientImpl(ApplicationEventPublisher eventPublisher) { // Modify constructor
@@ -232,58 +234,38 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             }
         }
         if (object instanceof NetworkProtocol.PlayerStatesUpdate pUpdate) {
-            // Compare with previous state to detect joins/leaves
             Set<String> previousPlayers = new HashSet<>(playerStates.keySet());
             Set<String> currentPlayers = new HashSet<>(pUpdate.getPlayers().keySet());
 
-            // Find new players (joins)
-            Set<String> joins = new HashSet<>(currentPlayers);
-            joins.removeAll(previousPlayers);
-
-            // Find players who left
+            // Track disconnected players
             Set<String> leaves = new HashSet<>(previousPlayers);
             leaves.removeAll(currentPlayers);
 
-            // Handle joins/leaves notifications
-            handlePlayerJoinsAndLeaves(joins, leaves);
-
-            // Update player states with improved movement detection
-            for (Map.Entry<String, PlayerSyncData> entry : pUpdate.getPlayers().entrySet()) {
-                String username = entry.getKey();
-                PlayerSyncData newState = entry.getValue();
-                PlayerSyncData oldState = playerStates.get(username);
-
-                // Reset movement state on reconnection
-                if (joins.contains(username)) {
-                    newState.setMoving(false);
-                    newState.setAnimationTime(0f);
-                } else if (oldState != null) {
-                    // Calculate actual movement based on position change
-                    float dx = Math.abs(oldState.getX() - newState.getX());
-                    float dy = Math.abs(oldState.getY() - newState.getY());
-                    boolean actuallyMoving = dx > 0.001f || dy > 0.001f;
-
-                    // Update movement state based on actual position change
-                    newState.setMoving(actuallyMoving);
-
-                    // Reset animation if stopped moving
-                    if (!actuallyMoving && oldState.isMoving()) {
-                        newState.setMoving(false);
-                        newState.setAnimationTime(0f);
-                    }
-
-                    // Preserve animation time if continuing to move
-                    if (actuallyMoving && oldState.isMoving()) {
-                        newState.setAnimationTime(oldState.getAnimationTime());
-                    }
+            // Handle player leaves first
+            for (String username : leaves) {
+                if (!processedLeaves.contains(username)) {
+                    handlePlayerLeave(username);
+                    processedLeaves.add(username);
                 }
-
-                // Update state in playerStates map
-                playerStates.put(username, newState);
             }
 
+            // Clear processed leaves for players that rejoin
+            processedLeaves.removeIf(currentPlayers::contains);
+
+            // Track new joins
+            Set<String> joins = new HashSet<>(currentPlayers);
+            joins.removeAll(previousPlayers);
+
+            // Handle new player joins
+            for (String username : joins) {
+                handlePlayerJoin(username);
+            }
+
+            // Update states with improved movement detection
+            updatePlayerStates(pUpdate.getPlayers());
+
             log.debug("Updated player states. Total players: {}", playerStates.size());
-        } else if (object instanceof NetworkProtocol.ChunkData chunkData) {
+        }else if (object instanceof NetworkProtocol.ChunkData chunkData) {
             ChunkKey key = new ChunkKey(chunkData.getChunkX(), chunkData.getChunkY());
             if (pendingChunkRequests.remove(key)) {
                 log.debug("Received chunk data for ({},{})", chunkData.getChunkX(), chunkData.getChunkY());
@@ -350,25 +332,55 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     }
 
 
-    private void handlePlayerJoinsAndLeaves(Set<String> joins, Set<String> leaves) {
-        // Handle joins
-        for (String username : joins) {
-            ChatMessage joinMsg = new ChatMessage();
-            joinMsg.setSender("System");
-            joinMsg.setContent(username + " joined the game");
-            joinMsg.setTimestamp(System.currentTimeMillis());
-            joinMsg.setType(ChatMessage.Type.SYSTEM);
-            chatService.handleIncomingMessage(joinMsg);
-        }
 
-        // Handle leaves
-        for (String username : leaves) {
-            ChatMessage leaveMsg = new ChatMessage();
-            leaveMsg.setSender("System");
-            leaveMsg.setContent(username + " left the game");
-            leaveMsg.setTimestamp(System.currentTimeMillis());
-            leaveMsg.setType(ChatMessage.Type.SYSTEM);
-            chatService.handleIncomingMessage(leaveMsg);
+    private void handlePlayerLeave(String username) {
+        // Remove from states immediately to stop animations
+        playerStates.remove(username);
+
+        // Send single leave message
+        ChatMessage leaveMsg = new ChatMessage();
+        leaveMsg.setSender("System");
+        leaveMsg.setContent(username + " left the game");
+        leaveMsg.setTimestamp(System.currentTimeMillis());
+        leaveMsg.setType(ChatMessage.Type.SYSTEM);
+        chatService.handleIncomingMessage(leaveMsg);
+    }
+
+    private void handlePlayerJoin(String username) {
+        ChatMessage joinMsg = new ChatMessage();
+        joinMsg.setSender("System");
+        joinMsg.setContent(username + " joined the game");
+        joinMsg.setTimestamp(System.currentTimeMillis());
+        joinMsg.setType(ChatMessage.Type.SYSTEM);
+        chatService.handleIncomingMessage(joinMsg);
+    }
+    private void updatePlayerStates(Map<String, PlayerSyncData> newStates) {
+        for (Map.Entry<String, PlayerSyncData> entry : newStates.entrySet()) {
+            String username = entry.getKey();
+            PlayerSyncData newState = entry.getValue();
+            PlayerSyncData oldState = playerStates.get(username);
+
+            if (oldState != null) {
+                // Calculate actual movement
+                float dx = Math.abs(oldState.getX() - newState.getX());
+                float dy = Math.abs(oldState.getY() - newState.getY());
+                boolean actuallyMoving = dx > 0.001f || dy > 0.001f;
+
+                // Update movement state based on actual position change
+                newState.setMoving(actuallyMoving);
+
+                if (!actuallyMoving) {
+                    // If not actually moving, ensure animation is stopped
+                    newState.setMoving(false);
+                    newState.setAnimationTime(0f);
+                } else {
+                    // Preserve animation time if continuing movement
+                    newState.setAnimationTime(oldState.getAnimationTime());
+                }
+            }
+
+            // Update the state
+            playerStates.put(username, newState);
         }
     }
     private boolean checkServerConnection() {
@@ -398,7 +410,9 @@ public class MultiplayerClientImpl implements MultiplayerClient {
                 client.stop();
                 client = null;
             }
+            // Clear all state on disconnect
             playerStates.clear();
+            processedLeaves.clear();
         }
     }
 
@@ -419,32 +433,24 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         client.sendTCP(req);
     }
 
+
     @Override
     public void update(float delta) {
-        // First check connection
         if (!checkServerConnection()) {
             return;
         }
 
-        // Update player states with improved animation handling
+        // Update animation states for actually moving players only
         for (PlayerSyncData psd : playerStates.values()) {
-            boolean directionChanged = !psd.getDirection().equals(psd.getLastDirection());
-            boolean movementChanged = psd.isMoving() != psd.isWasMoving();
-
-            if (directionChanged || movementChanged) {
-                // Reset animation on state changes
-                psd.setAnimationTime(0f);
-            } else if (psd.isMoving()) {
-                // Only update animation time if actually moving
+            if (psd.isMoving()) {
                 psd.setAnimationTime(psd.getAnimationTime() + delta);
             }
 
-            // Update previous state trackers
+            // Track previous state
             psd.setWasMoving(psd.isMoving());
             psd.setLastDirection(psd.getDirection());
         }
     }
-
     @Override
     public void sendMessage(Object msg) {
         if (!connected) return;
