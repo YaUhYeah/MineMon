@@ -340,54 +340,50 @@ public class MultiplayerServerImpl implements MultiplayerServer {
 
         try {
             // 1. Notify clients of shutdown
-            log.info("Notifying connected clients of shutdown...");
             NetworkProtocol.ServerShutdownNotice notice = new NetworkProtocol.ServerShutdownNotice();
             notice.setMessage("Server is shutting down...");
+            notice.setReason(NetworkProtocol.ServerShutdownNotice.ShutdownReason.NORMAL_SHUTDOWN);
             broadcast(notice);
 
-            // 2. Trigger disconnect events
+            // 2. Wait briefly for clients to receive the notification
+            Thread.sleep(500);
+
+            // 3. Save all player states
             for (String username : connectionUserMap.values()) {
-                eventBus.fireEvent(new PlayerLeaveEvent(username));
-            }
-
-            // 3. Save world state
-            log.info("Saving world state...");
-            worldService.saveWorldData();
-
-            // 4. Wait briefly for clients to process shutdown
-            Thread.sleep(1000);
-
-            // 5. Clean up network resources
-            if (server != null) {
-                log.info("Stopping network server...");
-                try {
-                    server.close();
-                } catch (Exception e) {
-                    log.error("Error closing server: {}", e.getMessage());
-                } finally {
-                    server.stop();
+                PlayerData pd = worldService.getPlayerData(username);
+                if (pd != null) {
+                    worldService.setPlayerData(pd);
                 }
             }
 
-            // 6. Clean up caches and executors
-            log.info("Cleaning up resources...");
-            cacheCleanupExecutor.shutdown();
-            if (!cacheCleanupExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                cacheCleanupExecutor.shutdownNow();
+            // 4. Save world state
+            worldService.saveWorldData();
+
+            // 5. Close all connections
+            for (Connection conn : server.getConnections()) {
+                try {
+                    conn.close();
+                } catch (Exception e) {
+                    log.error("Error closing connection: {}", e.getMessage());
+                }
             }
 
-            // 7. Clear all maps and collections
+            // 6. Stop the server
+            server.stop();
+            server.close();
+            server = null;
+
+            // 7. Clean up resources
             chunkRequestTimes.clear();
             pendingChunkRequests.clear();
             clientChunkCache.clear();
             connectionUserMap.clear();
+            activeUsers.clear();
 
             log.info("Server shutdown completed successfully");
 
         } catch (Exception e) {
             log.error("Error during server shutdown: {}", e.getMessage(), e);
-        } finally {
-            server = null;
         }
     }
 

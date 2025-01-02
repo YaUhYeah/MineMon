@@ -70,6 +70,13 @@ public final class NetworkProtocol {
     @Data
     public static class ServerShutdownNotice {
         private String message;
+        private ShutdownReason reason;
+
+        public enum ShutdownReason {
+            NORMAL_SHUTDOWN,
+            TIMEOUT,
+            ERROR
+        }
     }
     @Data
     public static class LoginResponse {

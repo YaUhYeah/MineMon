@@ -9,6 +9,8 @@ import io.github.minemon.NetworkProtocol;
 import io.github.minemon.chat.event.ChatMessageReceivedEvent;
 import io.github.minemon.chat.model.ChatMessage;
 import io.github.minemon.chat.service.ChatService;
+import io.github.minemon.core.screen.ServerDisconnectScreen;
+import io.github.minemon.core.service.ScreenManager;
 import io.github.minemon.multiplayer.model.ChunkUpdate;
 import io.github.minemon.multiplayer.model.PlayerSyncData;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
@@ -42,6 +44,9 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     private CreateUserResponseListener createUserResponseListener;
     private Runnable pendingCreateUserRequest = null;
     private Runnable pendingLoginRequest = null;
+    @Autowired
+    @Lazy
+    private ScreenManager screenManager;
     @Autowired
     @Lazy
     private WorldService worldService;
@@ -258,25 +263,28 @@ public class MultiplayerClientImpl implements MultiplayerClient {
                 leaveMsg.setTimestamp(System.currentTimeMillis());
                 leaveMsg.setType(ChatMessage.Type.SYSTEM);
                 chatService.handleIncomingMessage(leaveMsg);
-            } for (Map.Entry<String, PlayerSyncData> entry : pUpdate.getPlayers().entrySet()) {
+            }
+            for (Map.Entry<String, PlayerSyncData> entry : pUpdate.getPlayers().entrySet()) {
                 String username = entry.getKey();
                 PlayerSyncData newState = entry.getValue();
                 PlayerSyncData currentState = playerStates.get(username);
 
                 if (currentState != null) {
-                    // Preserve animation time if movement hasn't changed
-                    if (currentState.isMoving() == newState.isMoving() &&
-                        currentState.getDirection().equals(newState.getDirection())) {
+                    // Compare actual positions to determine movement
+                    boolean positionChanged = Math.abs(currentState.getX() - newState.getX()) > 0.001f ||
+                        Math.abs(currentState.getY() - newState.getY()) > 0.001f;
+
+                    // Update movement state based on server's state directly
+                    newState.setMoving(positionChanged);
+
+                    if (!positionChanged && currentState.isMoving()) {
+                        newState.setMoving(false);
+                        newState.setAnimationTime(0f);
+                    } else if (positionChanged) {
                         newState.setAnimationTime(currentState.getAnimationTime());
                     }
                 }
-
-                // Update position and movement state
-                newState.setMoving(currentState == null ||
-                    Math.abs(currentState.getX() - newState.getX()) > 0.001f ||
-                    Math.abs(currentState.getY() - newState.getY()) > 0.001f);
             }
-
             // Update states
             playerStates.clear();
             playerStates.putAll(pUpdate.getPlayers());
@@ -335,6 +343,10 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         } else if (object instanceof io.github.minemon.chat.model.ChatMessage chatMsg) {
             log.info("Received ChatMessage from {}: {}", chatMsg.getSender(), chatMsg.getContent());
             eventPublisher.publishEvent(new ChatMessageReceivedEvent(this, chatMsg));
+        }else if (object instanceof NetworkProtocol.ServerShutdownNotice notice) {
+            Gdx.app.postRunnable(() -> {
+                screenManager.showScreen(ServerDisconnectScreen.class);
+            });
         } else {
             log.warn("Unknown message type received: {}", object.getClass().getName());
         }
