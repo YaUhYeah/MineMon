@@ -26,10 +26,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -38,6 +35,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Service
 public class MultiplayerClientImpl implements MultiplayerClient {
+    private final Map<ChunkKey, ChunkBuffer> chunkBuffers = new ConcurrentHashMap<>();
     private final Map<String, PlayerSyncData> playerStates = new ConcurrentHashMap<>();
     private final Map<String, ChunkUpdate> loadedChunks = new ConcurrentHashMap<>();
     private final ApplicationEventPublisher eventPublisher;
@@ -62,7 +60,6 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     @Autowired
     @Lazy
     private PlayerService playerService;
-
     @Autowired
     public MultiplayerClientImpl(ApplicationEventPublisher eventPublisher) { // Modify constructor
         this.eventPublisher = eventPublisher;
@@ -72,7 +69,6 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     public boolean isPendingChunkRequest(int chunkX, int chunkY) {
         return pendingChunkRequests.contains(new ChunkKey(chunkX, chunkY));
     }
-
 
     @Override
     public void requestChunk(int chunkX, int chunkY) {
@@ -102,6 +98,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         }, 5, TimeUnit.SECONDS);
         scheduler.shutdown();
     }
+
     @Override
     public Map<String, PlayerSyncData> getPlayerStates() {
         return playerStates;
@@ -218,6 +215,45 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         log.info("Sent CreateUserRequest for user: {}", username);
     }
 
+    private void handleChunkData(NetworkProtocol.ChunkData chunkData) {
+        if (!chunkData.isPartial()) {
+            // Single packet chunk, process directly
+            worldService.loadOrReplaceChunkData(
+                chunkData.getChunkX(),
+                chunkData.getChunkY(),
+                chunkData.getTiles(),
+                chunkData.getObjects()
+            );
+            return;
+        }
+
+        // Handle partial chunk
+        ChunkKey key = new ChunkKey(chunkData.getChunkX(), chunkData.getChunkY());
+        ChunkBuffer buffer = chunkBuffers.computeIfAbsent(key, k ->
+            new ChunkBuffer(chunkData.getTiles(), chunkData.getTotalParts())
+        );
+
+        // Add objects from this part
+        buffer.getObjects().addAll(chunkData.getObjects());
+        buffer.setReceivedParts(buffer.getReceivedParts() + 1);
+
+        // Check if we have all parts
+        if (buffer.getReceivedParts() == buffer.getTotalParts()) {
+            worldService.loadOrReplaceChunkData(
+                chunkData.getChunkX(),
+                chunkData.getChunkY(),
+                buffer.getTiles(),
+                buffer.getObjects()
+            );
+            chunkBuffers.remove(key);
+        }
+    }
+
+    @Override
+    public void clearPendingChunkRequests() {
+        pendingChunkRequests.clear();
+        chunkBuffers.clear();
+    }
 
     private void handleMessage(Object object) {
         if (object.getClass().getName().startsWith("com.esotericsoftware.kryonet.FrameworkMessage")) {
@@ -279,22 +315,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
 
             log.debug("Updated player states. Total players: {}", playerStates.size());
         } else if (object instanceof NetworkProtocol.ChunkData chunkData) {
-            ChunkKey key = new ChunkKey(chunkData.getChunkX(), chunkData.getChunkY());
-            if (pendingChunkRequests.remove(key)) {
-                log.debug("Received chunk data for ({},{})", chunkData.getChunkX(), chunkData.getChunkY());
-                // Update world service with chunk data
-                Gdx.app.postRunnable(() -> {
-                    worldService.loadOrReplaceChunkData(
-                        chunkData.getChunkX(),
-                        chunkData.getChunkY(),
-                        chunkData.getTiles(),
-                        chunkData.getObjects()
-                    );
-                });
-            } else {
-                log.warn("Received unrequested chunk data for ({},{})",
-                    chunkData.getChunkX(), chunkData.getChunkY());
-            }
+            handleChunkData(chunkData);
         } else if (object instanceof NetworkProtocol.WorldObjectsUpdate wObjects) {
             wObjects.getObjects().forEach(update -> {
                 String key = (update.getTileX() / 16) + "," + (update.getTileY() / 16);
@@ -342,12 +363,6 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         } else {
             log.warn("Unknown message type received: {}", object.getClass().getName());
         }
-    }
-
-
-    @Override
-    public void clearPendingChunkRequests() {
-        pendingChunkRequests.clear();
     }
 
     private void handlePlayerLeave(String username) {
@@ -509,6 +524,14 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     @Override
     public void setPendingCreateUserRequest(Runnable action) {
         this.pendingCreateUserRequest = action;
+    }
+
+    @Data
+    private static class ChunkBuffer {
+        private final int[][] tiles;
+        private final List<WorldObject> objects = new ArrayList<>();
+        private final int totalParts;
+        private int receivedParts = 0;
     }
 
     @Data

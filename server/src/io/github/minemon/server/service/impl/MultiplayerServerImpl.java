@@ -26,6 +26,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -256,20 +257,16 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         update.setPlayers(states);
         broadcast(update);
     }
+    private static final int MAX_OBJECTS_PER_CHUNK = 50;  // Maximum objects per chunk packet
+
     private void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest req) {
         try {
             synchronized (this) {
-                // First try to get existing chunk
                 ChunkUpdate chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
 
                 if (chunk == null) {
-                    // If chunk doesn't exist, explicitly generate it
                     worldService.loadChunk(new Vector2(req.getChunkX(), req.getChunkY()));
-
-                    // Wait briefly for generation
                     Thread.sleep(50);
-
-                    // Try to get the generated chunk again
                     chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
 
                     if (chunk == null) {
@@ -278,29 +275,41 @@ public class MultiplayerServerImpl implements MultiplayerServer {
                     }
                 }
 
-                // Split chunk data if too large
-                NetworkProtocol.ChunkData cd = new NetworkProtocol.ChunkData();
-                cd.setChunkX(req.getChunkX());
-                cd.setChunkY(req.getChunkY());
-                cd.setTiles(chunk.getTiles());
+                List<WorldObject> allObjects = chunk.getObjects();
+                int totalParts = (allObjects.size() + MAX_OBJECTS_PER_CHUNK - 1) / MAX_OBJECTS_PER_CHUNK;
 
-                // Send objects in smaller batches if needed
-                List<WorldObject> objects = chunk.getObjects();
-                int batchSize = 50; // Adjust this value based on testing
+                for (int part = 0; part < totalParts; part++) {
+                    NetworkProtocol.ChunkData cd = new NetworkProtocol.ChunkData();
+                    cd.setChunkX(req.getChunkX());
+                    cd.setChunkY(req.getChunkY());
 
-                for (int i = 0; i < objects.size(); i += batchSize) {
-                    int end = Math.min(i + batchSize, objects.size());
-                    cd.setObjects(objects.subList(i, end));
+                    // Only send tiles in the first part
+                    if (part == 0) {
+                        cd.setTiles(chunk.getTiles());
+                    }
+
+                    // Calculate object slice
+                    int startIndex = part * MAX_OBJECTS_PER_CHUNK;
+                    int endIndex = Math.min(startIndex + MAX_OBJECTS_PER_CHUNK, allObjects.size());
+
+                    // Convert sublist to ArrayList to avoid serialization issues
+                    ArrayList<WorldObject> partialObjects = new ArrayList<>(
+                        allObjects.subList(startIndex, endIndex)
+                    );
+
+                    cd.setObjects(partialObjects);
+                    cd.setPartial(totalParts > 1);
+                    cd.setPartNumber(part);
+                    cd.setTotalParts(totalParts);
+
                     connection.sendTCP(cd);
                 }
-
             }
         } catch (Exception e) {
             log.error("Error in chunk generation for ({},{}): {}",
-                req.getChunkX(), req.getChunkY(), e.getMessage());
+                req.getChunkX(), req.getChunkY(), e.getMessage(), e);
         }
     }
-
     private void sendInitialChunks(Connection connection, PlayerData pd) {
         int px = (int) pd.getX();
         int py = (int) pd.getY();

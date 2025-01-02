@@ -15,7 +15,7 @@ import java.util.concurrent.Executors;
 @Slf4j
 public class ChunkPreloaderService {
     // Increase the preload radius to ensure chunks are loaded before visible
-    private static final int PRELOAD_RADIUS = 5;  // Increased from 3
+    private static final int PRELOAD_RADIUS = 3;  // Increased from 3
     private static final int LOAD_BUFFER = 2;     // Extra buffer around visible area
     private final WorldService worldService;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();

@@ -21,6 +21,16 @@ public final class NetworkProtocol {
         kryo.register(java.util.UUID.class);
         kryo.register(ChatMessage.class);
 
+        kryo.register(UUID.class, new UUIDSerializer());
+        kryo.register(ArrayList.class);
+        kryo.register(HashMap.class);
+        kryo.register(HashSet.class);
+        kryo.register(WorldObject.class);
+        kryo.register(WorldObject[].class);
+        kryo.register(ArrayList.class);
+        kryo.register(int[].class);
+        kryo.register(int[][].class);
+        kryo.register(ChunkData.class);
         kryo.register(PlayerData.class);
         kryo.register(WorldObject.class);
         kryo.register(PlayerSyncData.class);
@@ -28,11 +38,7 @@ public final class NetworkProtocol {
 
         kryo.register(ServerShutdownNotice.class);
 
-        kryo.register(ArrayList.class);
-        kryo.register(HashMap.class);
-        kryo.register(HashSet.class);
         kryo.register(List.class);
-        kryo.register(Map.class);
         kryo.register(Set.class);
 
         kryo.register(LoginRequest.class);
@@ -114,7 +120,10 @@ public final class NetworkProtocol {
         private int chunkX;
         private int chunkY;
         private int[][] tiles;
-        private List<WorldObject> objects;
+        private List<WorldObject> objects = new ArrayList<>();
+        private boolean isPartial;
+        private int partNumber;
+        private int totalParts;
     }
 
     @Data
