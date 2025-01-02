@@ -43,7 +43,7 @@ public class ServerDisconnectScreen implements Screen {
         mainTable.setBackground(skin.newDrawable("white", 0.2f, 0.2f, 0.2f, 0.9f));
 
         // Title
-        Label titleLabel = new Label("Server Disconnected", skin, "title");
+        Label titleLabel = new Label("Server Disconnected", skin);
         titleLabel.setAlignment(Align.center);
         mainTable.add(titleLabel).pad(40).row();
 
