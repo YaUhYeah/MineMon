@@ -218,12 +218,12 @@ public class MultiplayerServerImpl implements MultiplayerServer {
             pd.setDirection(PlayerDirection.valueOf(moveReq.getDirection().toUpperCase()));
         } catch (IllegalArgumentException e) {
             log.error("Invalid direction '{}'", moveReq.getDirection());
+            return;
         }
 
         float oldX = pd.getX();
         float oldY = pd.getY();
 
-        // Proposed new position (from the client)
         float newX = moveReq.getX();
         float newY = moveReq.getY();
 
@@ -236,23 +236,16 @@ public class MultiplayerServerImpl implements MultiplayerServer {
             (Math.abs(oldX - newXrounded) > 0.001f) ||
                 (Math.abs(oldY - newYrounded) > 0.001f);
 
+        pd.setMoving(positionChanged);
 
-        // Only set the position if it actually changed
         if (positionChanged) {
             pd.setX(newX);
             pd.setY(newY);
-            pd.setMoving(true);
-        } else {
-            pd.setMoving(false);
         }
 
-        // Persist updated PlayerData
         worldService.setPlayerData(pd);
-
-        // Broadcast the updated state to everyone
         broadcastPlayerStates();
     }
-
     private void broadcastPlayerStates() {
         Map<String, PlayerSyncData> states = multiplayerService.getAllPlayerStates();
         NetworkProtocol.PlayerStatesUpdate update = new NetworkProtocol.PlayerStatesUpdate();

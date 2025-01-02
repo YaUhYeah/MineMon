@@ -258,6 +258,23 @@ public class MultiplayerClientImpl implements MultiplayerClient {
                 leaveMsg.setTimestamp(System.currentTimeMillis());
                 leaveMsg.setType(ChatMessage.Type.SYSTEM);
                 chatService.handleIncomingMessage(leaveMsg);
+            } for (Map.Entry<String, PlayerSyncData> entry : pUpdate.getPlayers().entrySet()) {
+                String username = entry.getKey();
+                PlayerSyncData newState = entry.getValue();
+                PlayerSyncData currentState = playerStates.get(username);
+
+                if (currentState != null) {
+                    // Preserve animation time if movement hasn't changed
+                    if (currentState.isMoving() == newState.isMoving() &&
+                        currentState.getDirection().equals(newState.getDirection())) {
+                        newState.setAnimationTime(currentState.getAnimationTime());
+                    }
+                }
+
+                // Update position and movement state
+                newState.setMoving(currentState == null ||
+                    Math.abs(currentState.getX() - newState.getX()) > 0.001f ||
+                    Math.abs(currentState.getY() - newState.getY()) > 0.001f);
             }
 
             // Update states
