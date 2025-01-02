@@ -1,6 +1,7 @@
 package io.github.minemon.core.screen;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -32,14 +33,14 @@ public class ServerDisconnectScreen implements Screen {
     @Override
     public void show() {
         stage = new Stage(new ScreenViewport());
-        Gdx.input.setInputProcessor(stage);
         skin = uiService.getSkin();
 
+        // Create main table
         Table mainTable = new Table(skin);
         mainTable.setFillParent(true);
         stage.addActor(mainTable);
 
-        // Add panel background
+        // Set background
         mainTable.setBackground(skin.newDrawable("white", 0.2f, 0.2f, 0.2f, 0.9f));
 
         // Title
@@ -54,14 +55,32 @@ public class ServerDisconnectScreen implements Screen {
         mainTable.add(messageLabel).width(400).pad(20).row();
 
         // Back button
-        TextButton backButton = new TextButton("Back to Login", skin);
+        TextButton backButton = new TextButton("Back to Menu", skin);
         backButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                screenManager.showScreen(LoginScreen.class);
+                goToModeSelection();
             }
         });
         mainTable.add(backButton).pad(40).width(200).height(50).row();
+
+        // Set up input handling for ESC key
+        stage.addListener(new com.badlogic.gdx.scenes.scene2d.InputListener() {
+            @Override
+            public boolean keyDown(InputEvent event, int keycode) {
+                if (keycode == Input.Keys.ESCAPE) {
+                    goToModeSelection();
+                    return true;
+                }
+                return false;
+            }
+        });
+
+        Gdx.input.setInputProcessor(stage);
+    }
+
+    private void goToModeSelection() {
+        screenManager.showScreen(ModeSelectionScreen.class);
     }
 
     @Override

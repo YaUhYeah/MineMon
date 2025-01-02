@@ -1,7 +1,6 @@
 package io.github.minemon.multiplayer.service.impl;
 
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.utils.TimeUtils;
 import com.esotericsoftware.kryonet.Client;
 import com.esotericsoftware.kryonet.Connection;
 import com.esotericsoftware.kryonet.Listener;
@@ -231,7 +230,8 @@ public class MultiplayerClientImpl implements MultiplayerClient {
                         createResp.getMessage() != null ? createResp.getMessage() : (createResp.isSuccess() ? "Account created." : "Failed to create account.")
                 );
             }
-        }    if (object instanceof NetworkProtocol.PlayerStatesUpdate pUpdate) {
+        }
+        if (object instanceof NetworkProtocol.PlayerStatesUpdate pUpdate) {
             // Compare with previous state to detect joins/leaves
             Set<String> previousPlayers = new HashSet<>(playerStates.keySet());
             Set<String> currentPlayers = new HashSet<>(pUpdate.getPlayers().keySet());
@@ -244,59 +244,45 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             Set<String> leaves = new HashSet<>(previousPlayers);
             leaves.removeAll(currentPlayers);
 
-            // Handle joins
-            for (String username : joins) {
-                ChatMessage joinMsg = new ChatMessage();
-                joinMsg.setSender("System");
-                joinMsg.setContent(username + " joined the game");
-                joinMsg.setTimestamp(System.currentTimeMillis());
-                joinMsg.setType(ChatMessage.Type.SYSTEM);
-                chatService.handleIncomingMessage(joinMsg);
-            }
+            // Handle joins/leaves notifications
+            handlePlayerJoinsAndLeaves(joins, leaves);
 
-            // Handle leaves
-            for (String username : leaves) {
-                ChatMessage leaveMsg = new ChatMessage();
-                leaveMsg.setSender("System");
-                leaveMsg.setContent(username + " left the game");
-                leaveMsg.setTimestamp(System.currentTimeMillis());
-                leaveMsg.setType(ChatMessage.Type.SYSTEM);
-                chatService.handleIncomingMessage(leaveMsg);
-            }
+            // Update player states with improved movement detection
             for (Map.Entry<String, PlayerSyncData> entry : pUpdate.getPlayers().entrySet()) {
                 String username = entry.getKey();
                 PlayerSyncData newState = entry.getValue();
                 PlayerSyncData oldState = playerStates.get(username);
 
-                // If we have an old state, compare positions
-                if (oldState != null) {
+                // Reset movement state on reconnection
+                if (joins.contains(username)) {
+                    newState.setMoving(false);
+                    newState.setAnimationTime(0f);
+                } else if (oldState != null) {
+                    // Calculate actual movement based on position change
                     float dx = Math.abs(oldState.getX() - newState.getX());
                     float dy = Math.abs(oldState.getY() - newState.getY());
-                    boolean posChanged = dx > 0.001f || dy > 0.001f;
+                    boolean actuallyMoving = dx > 0.001f || dy > 0.001f;
 
-                    log.debug("Player {}: pos change={}, old=({},{}), new=({},{}), moving={}",
-                        username, posChanged, oldState.getX(), oldState.getY(),
-                        newState.getX(), newState.getY(), newState.isMoving());
+                    // Update movement state based on actual position change
+                    newState.setMoving(actuallyMoving);
 
-                    // Update movement based on actual position change
-                    newState.setMoving(posChanged);
-
-                    // Reset animation if we stopped moving
-                    if (!posChanged && newState.isMoving()) {
+                    // Reset animation if stopped moving
+                    if (!actuallyMoving && oldState.isMoving()) {
                         newState.setMoving(false);
                         newState.setAnimationTime(0f);
                     }
+
+                    // Preserve animation time if continuing to move
+                    if (actuallyMoving && oldState.isMoving()) {
+                        newState.setAnimationTime(oldState.getAnimationTime());
+                    }
                 }
 
-                // Update the states map with the new state
+                // Update state in playerStates map
                 playerStates.put(username, newState);
             }
 
-            // Broadcast updated player list for UI
-            log.debug("Total players in update: {}", pUpdate.getPlayers().size());
-            playerStates.clear();
-            playerStates.putAll(pUpdate.getPlayers());
-
+            log.debug("Updated player states. Total players: {}", playerStates.size());
         } else if (object instanceof NetworkProtocol.ChunkData chunkData) {
             ChunkKey key = new ChunkKey(chunkData.getChunkX(), chunkData.getChunkY());
             if (pendingChunkRequests.remove(key)) {
@@ -363,6 +349,28 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         }
     }
 
+
+    private void handlePlayerJoinsAndLeaves(Set<String> joins, Set<String> leaves) {
+        // Handle joins
+        for (String username : joins) {
+            ChatMessage joinMsg = new ChatMessage();
+            joinMsg.setSender("System");
+            joinMsg.setContent(username + " joined the game");
+            joinMsg.setTimestamp(System.currentTimeMillis());
+            joinMsg.setType(ChatMessage.Type.SYSTEM);
+            chatService.handleIncomingMessage(joinMsg);
+        }
+
+        // Handle leaves
+        for (String username : leaves) {
+            ChatMessage leaveMsg = new ChatMessage();
+            leaveMsg.setSender("System");
+            leaveMsg.setContent(username + " left the game");
+            leaveMsg.setTimestamp(System.currentTimeMillis());
+            leaveMsg.setType(ChatMessage.Type.SYSTEM);
+            chatService.handleIncomingMessage(leaveMsg);
+        }
+    }
     private boolean checkServerConnection() {
         if (!connected || client == null) {
             log.debug("Lost connection to server");
@@ -418,21 +426,25 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             return;
         }
 
-        // Update player states
+        // Update player states with improved animation handling
         for (PlayerSyncData psd : playerStates.values()) {
             boolean directionChanged = !psd.getDirection().equals(psd.getLastDirection());
-            boolean movementChanged = (psd.isMoving() != psd.isWasMoving());
+            boolean movementChanged = psd.isMoving() != psd.isWasMoving();
 
             if (directionChanged || movementChanged) {
+                // Reset animation on state changes
                 psd.setAnimationTime(0f);
             } else if (psd.isMoving()) {
+                // Only update animation time if actually moving
                 psd.setAnimationTime(psd.getAnimationTime() + delta);
             }
 
+            // Update previous state trackers
             psd.setWasMoving(psd.isMoving());
             psd.setLastDirection(psd.getDirection());
         }
     }
+
     @Override
     public void sendMessage(Object msg) {
         if (!connected) return;

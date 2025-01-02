@@ -114,6 +114,13 @@ public class JsonWorldDataService {
     }
 
     public void loadWorld(String worldName, WorldData worldData) throws IOException {
+        if (worldName == null || worldName.trim().isEmpty()) {
+            throw new IllegalArgumentException("World name cannot be null or empty");
+        }
+        if (worldData == null) {
+            throw new IllegalArgumentException("WorldData instance cannot be null");
+        }
+
         Path worldFile = worldFilePath(worldName);
         if (!Files.exists(worldFile)) {
             throw new NoSuchFileException("World file not found: " + worldFile);
@@ -121,22 +128,38 @@ public class JsonWorldDataService {
 
         try (Reader reader = Files.newBufferedReader(worldFile)) {
             WorldData loaded = json.fromJson(WorldData.class, reader);
+            if (loaded == null) {
+                throw new IOException("Failed to parse world data for " + worldName);
+            }
+
+            // Set the world data
             worldData.setWorldName(loaded.getWorldName());
             worldData.setSeed(loaded.getSeed());
             worldData.setCreatedDate(loaded.getCreatedDate());
             worldData.setLastPlayed(loaded.getLastPlayed());
             worldData.setPlayedTime(loaded.getPlayedTime());
+
+            // Clear and copy collections
             worldData.getPlayers().clear();
             worldData.getPlayers().putAll(loaded.getPlayers());
             worldData.getChunks().clear();
             worldData.getChunks().putAll(loaded.getChunks());
+
+            log.info("Successfully loaded world data for '{}'", worldName);
+        } catch (Exception e) {
+            log.error("Error loading world '{}': {}", worldName, e.getMessage());
+            throw new IOException("Failed to load world: " + worldName, e);
         }
     }
 
     public void saveWorld(WorldData worldData) throws IOException {
+        if (worldData == null) {
+            throw new IllegalArgumentException("WorldData cannot be null");
+        }
         if (worldData.getWorldName() == null || worldData.getWorldName().isEmpty()) {
             throw new IllegalStateException("Cannot save a world with no name");
         }
+
         Path folder = worldFolderPath(worldData.getWorldName());
         if (!Files.exists(folder)) {
             Files.createDirectories(folder);
@@ -145,6 +168,10 @@ public class JsonWorldDataService {
         Path worldFile = worldFilePath(worldData.getWorldName());
         try (Writer writer = Files.newBufferedWriter(worldFile)) {
             json.toJson(worldData, writer);
+            log.info("Successfully saved world data for '{}'", worldData.getWorldName());
+        } catch (Exception e) {
+            log.error("Error saving world '{}': {}", worldData.getWorldName(), e.getMessage());
+            throw new IOException("Failed to save world", e);
         }
     }
 

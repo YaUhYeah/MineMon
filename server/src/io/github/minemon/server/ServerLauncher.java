@@ -13,6 +13,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Random;
 
 @Slf4j
 public class ServerLauncher {
@@ -111,34 +112,39 @@ public class ServerLauncher {
         log.info("Server Stopped.");
     }
 
-    /**
-     * Called once the Spring context is up, before the main game loop starts.
-     * Ensures we have a default server world created or loaded, so paths are valid.
-     */
     private static void onServerStart(ConfigurableApplicationContext context) {
-        // Example: we fetch the service needed to manage the server world:
         WorldService worldService = context.getBean(WorldService.class);
-
-        // The default server world name
         String defaultServerWorldName = "serverWorld";
 
-        // If the world doesn't exist, create it
-        if (!worldService.getAvailableWorlds().contains(defaultServerWorldName)) {
-            log.info("World '{}' does not exist. Creating it now...", defaultServerWorldName);
-            boolean created = worldService.createWorld(defaultServerWorldName, 12345L);
-            if (created) {
-                log.info("Successfully created new default server world '{}'.", defaultServerWorldName);
-            } else {
-                log.warn("Failed to create world '{}'. Possibly it exists or there's an error.", defaultServerWorldName);
-            }
-        } else {
-            // Otherwise, load it
-            log.info("Loading existing server world '{}'.", defaultServerWorldName);
-            worldService.loadWorld(defaultServerWorldName);
-        }
+        try {
+            // Initialize the world service first
+            worldService.initIfNeeded();
 
-        // Possibly call initIfNeeded (which might do chunk loading, etc.)
-        worldService.initIfNeeded();
-        log.info("Server world initialization complete.");
+            // Check if world exists by trying to load it
+            try {
+                worldService.loadWorld(defaultServerWorldName);
+                log.info("Successfully loaded server world '{}'.", defaultServerWorldName);
+            } catch (Exception e) {
+                log.info("World '{}' does not exist. Creating new world...", defaultServerWorldName);
+                // Create new world with random seed if load fails
+                long seed = new Random().nextLong();
+                boolean created = worldService.createWorld(defaultServerWorldName, seed);
+                if (created) {
+                    log.info("Successfully created new server world '{}' with seed {}.",
+                        defaultServerWorldName, seed);
+                    worldService.loadWorld(defaultServerWorldName);
+                } else {
+                    throw new RuntimeException("Failed to create default server world");
+                }
+            }
+
+            // Ensure world service is fully initialized
+            worldService.initIfNeeded();
+            log.info("Server world initialization complete.");
+
+        } catch (Exception e) {
+            log.error("Critical error initializing server world: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to initialize server world", e);
+        }
     }
 }
