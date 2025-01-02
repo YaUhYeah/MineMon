@@ -15,6 +15,7 @@ import io.github.minemon.player.model.PlayerDirection;
 import io.github.minemon.server.service.MultiplayerServer;
 import io.github.minemon.server.service.MultiplayerService;
 import io.github.minemon.world.model.WorldObject;
+import io.github.minemon.world.service.ChunkTransferManager;
 import io.github.minemon.world.service.WorldService;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -40,10 +41,11 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class MultiplayerServerImpl implements MultiplayerServer {
 
+    private static final int BUFFER_SIZE = 32768; // Increased from default 16384
+    private static final int MAX_OBJECTS_PER_CHUNK = 50;  // Maximum objects per chunk packet
     private final MultiplayerService multiplayerService;
     private final EventBus eventBus;
     private final AuthService authService;
-    private static final int BUFFER_SIZE = 32768; // Increased from default 16384
     private final Map<Integer, String> connectionUserMap = new ConcurrentHashMap<>();
     private final Map<String, Map<ChunkKey, Long>> clientChunkCache = new ConcurrentHashMap<>();
     private final ScheduledExecutorService cacheCleanupExecutor =
@@ -56,6 +58,8 @@ public class MultiplayerServerImpl implements MultiplayerServer {
     private volatile boolean running = false;
     @Autowired
     private WorldService worldService;
+    @Autowired
+    private ChunkTransferManager chunkTransferManager;
 
     public MultiplayerServerImpl(MultiplayerService multiplayerService,
                                  EventBus eventBus,
@@ -212,6 +216,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         connection.sendTCP(resp);
         log.info("User creation attempt for '{}': {}", req.getUsername(), success ? "SUCCESS" : "FAILURE");
     }
+
     private void handlePlayerMove(Connection connection, NetworkProtocol.PlayerMoveRequest moveReq) {
         String username = connectionUserMap.get(connection.getID());
         if (username == null) return;
@@ -234,8 +239,8 @@ public class MultiplayerServerImpl implements MultiplayerServer {
 
         pd.setWantsToRun(moveReq.isRunning());
 
-        float newXrounded = (float)Math.round(newX * 1000) / 1000f;
-        float newYrounded = (float)Math.round(newY * 1000) / 1000f;
+        float newXrounded = (float) Math.round(newX * 1000) / 1000f;
+        float newYrounded = (float) Math.round(newY * 1000) / 1000f;
 
         boolean positionChanged =
             (Math.abs(oldX - newXrounded) > 0.001f) ||
@@ -251,13 +256,13 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         worldService.setPlayerData(pd);
         broadcastPlayerStates();
     }
+
     private void broadcastPlayerStates() {
         Map<String, PlayerSyncData> states = multiplayerService.getAllPlayerStates();
         NetworkProtocol.PlayerStatesUpdate update = new NetworkProtocol.PlayerStatesUpdate();
         update.setPlayers(states);
         broadcast(update);
     }
-    private static final int MAX_OBJECTS_PER_CHUNK = 50;  // Maximum objects per chunk packet
 
     private void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest req) {
         try {
@@ -266,7 +271,6 @@ public class MultiplayerServerImpl implements MultiplayerServer {
 
                 if (chunk == null) {
                     worldService.loadChunk(new Vector2(req.getChunkX(), req.getChunkY()));
-                    Thread.sleep(50);
                     chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
 
                     if (chunk == null) {
@@ -275,41 +279,24 @@ public class MultiplayerServerImpl implements MultiplayerServer {
                     }
                 }
 
-                List<WorldObject> allObjects = chunk.getObjects();
-                int totalParts = (allObjects.size() + MAX_OBJECTS_PER_CHUNK - 1) / MAX_OBJECTS_PER_CHUNK;
+                // Use ChunkTransferManager to split the chunk data into manageable packets
+                List<NetworkProtocol.ChunkData> packets = chunkTransferManager.prepareChunkTransfer(
+                    req.getChunkX(), req.getChunkY(), chunk.getTiles(), chunk.getObjects());
 
-                for (int part = 0; part < totalParts; part++) {
-                    NetworkProtocol.ChunkData cd = new NetworkProtocol.ChunkData();
-                    cd.setChunkX(req.getChunkX());
-                    cd.setChunkY(req.getChunkY());
-
-                    // Only send tiles in the first part
-                    if (part == 0) {
-                        cd.setTiles(chunk.getTiles());
-                    }
-
-                    // Calculate object slice
-                    int startIndex = part * MAX_OBJECTS_PER_CHUNK;
-                    int endIndex = Math.min(startIndex + MAX_OBJECTS_PER_CHUNK, allObjects.size());
-
-                    // Convert sublist to ArrayList to avoid serialization issues
-                    ArrayList<WorldObject> partialObjects = new ArrayList<>(
-                        allObjects.subList(startIndex, endIndex)
-                    );
-
-                    cd.setObjects(partialObjects);
-                    cd.setPartial(totalParts > 1);
-                    cd.setPartNumber(part);
-                    cd.setTotalParts(totalParts);
-
-                    connection.sendTCP(cd);
+                // Send each packet to the client
+                for (NetworkProtocol.ChunkData packet : packets) {
+                    connection.sendTCP(packet);
                 }
+
+                log.debug("Sent {} chunk packets for chunk ({},{})",
+                    packets.size(), req.getChunkX(), req.getChunkY());
             }
         } catch (Exception e) {
-            log.error("Error in chunk generation for ({},{}): {}",
+            log.error("Error processing chunk request for ({},{}): {}",
                 req.getChunkX(), req.getChunkY(), e.getMessage(), e);
         }
     }
+
     private void sendInitialChunks(Connection connection, PlayerData pd) {
         int px = (int) pd.getX();
         int py = (int) pd.getY();

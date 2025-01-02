@@ -208,9 +208,8 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         log.info("Generated world thumbnail for '{}'", worldName);
     }
 
-    /**
-     * Returns the tiles for a given chunk, handling both singleplayer and multiplayer modes
-     */
+
+
     @Override
     public int[][] getChunkTiles(int chunkX, int chunkY) {
         String key = chunkX + "," + chunkY;
@@ -218,22 +217,19 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
         if (cData == null) {
             if (isMultiplayerMode) {
-                // Only request if not already pending
-                if (!multiplayerClient.isPendingChunkRequest(chunkX, chunkY)) {
-                    log.debug("Requesting chunk {},{} from server", chunkX, chunkY);
+                if (!chunkLoadingQueue.isChunkInProgress(chunkX, chunkY)) {
+                    log.debug("Requesting missing chunk {}", key);
+                    chunkLoadingQueue.queueChunkRequest(chunkX, chunkY);
                     multiplayerClient.requestChunk(chunkX, chunkY);
-                } else {
-                    log.trace("Chunk {},{} already requested", chunkX, chunkY);
                 }
                 return null;
             } else {
-                // Only generate locally in singleplayer mode
                 loadOrGenerateChunk(chunkX, chunkY);
                 cData = getWorldData().getChunks().get(key);
             }
         }
 
-        return (cData != null) ? cData.getTiles() : null;
+        return cData != null ? cData.getTiles() : null;
     }
 
     @Override
@@ -243,8 +239,13 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         cData.setChunkX(chunkX);
         cData.setChunkY(chunkY);
         cData.setTiles(tiles);
-        cData.setObjects(objects);
+        cData.setObjects(objects != null ? new ArrayList<>(objects) : new ArrayList<>());
+
         getWorldData().getChunks().put(key, cData);
+
+        // Mark this chunk as complete in the loading queue
+        chunkLoadingQueue.markChunkComplete(chunkX, chunkY);
+
         if (!isMultiplayerMode) {
             try {
                 jsonWorldDataService.saveChunk(getWorldData().getWorldName(), cData);
@@ -252,10 +253,9 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
                 log.error("Failed to save chunk data for chunk {}: {}", key, e.getMessage());
             }
         } else {
-            log.debug("Skipping local chunk save in multiplayer mode for chunk {}", key);
+            log.debug("Received and processed chunk data for {}", key);
         }
     }
-
     @Override
     public void updateWorldObjectState(WorldObjectUpdate update) {
         String key = (update.getTileX() / 16) + "," + (update.getTileY() / 16);
@@ -294,7 +294,8 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             log.error("Failed to save chunk after updateWorldObjectState: {}", e.getMessage());
         }
     }
-
+    @Autowired
+    private ChunkLoadingQueue chunkLoadingQueue;
     @Override
     public TileManager getTileManager() {
         return this.tileManager;
