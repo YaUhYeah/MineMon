@@ -13,6 +13,7 @@ import io.github.minemon.core.service.ScreenManager;
 import io.github.minemon.multiplayer.model.ChunkUpdate;
 import io.github.minemon.multiplayer.model.PlayerSyncData;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
+import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.model.ObjectType;
 import io.github.minemon.world.model.WorldObject;
 import io.github.minemon.world.service.WorldService;
@@ -37,6 +38,9 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     private final Map<String, PlayerSyncData> playerStates = new ConcurrentHashMap<>();
     private final Map<String, ChunkUpdate> loadedChunks = new ConcurrentHashMap<>();
     private final ApplicationEventPublisher eventPublisher;
+    // Add this to class fields
+    private final Set<ChunkKey> pendingChunkRequests = ConcurrentHashMap.newKeySet();
+    private final Set<String> processedLeaves = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private Client client;
     private boolean connected = false;
     private LoginResponseListener loginResponseListener;
@@ -52,16 +56,14 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     @Autowired
     @Lazy
     private ChatService chatService;
+    @Autowired
+    @Lazy
+    private PlayerService playerService;
 
-    @Data
-    @AllArgsConstructor
-    private static class ChunkKey {
-        private final int x;
-        private final int y;
+    @Autowired
+    public MultiplayerClientImpl(ApplicationEventPublisher eventPublisher) { // Modify constructor
+        this.eventPublisher = eventPublisher;
     }
-
-    // Add this to class fields
-    private final Set<ChunkKey> pendingChunkRequests = ConcurrentHashMap.newKeySet();
 
     @Override
     public boolean isPendingChunkRequest(int chunkX, int chunkY) {
@@ -83,12 +85,6 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         } else {
             log.trace("Chunk request for ({},{}) already pending", chunkX, chunkY);
         }
-    }
-    private final Set<String> processedLeaves = Collections.newSetFromMap(new ConcurrentHashMap<>());
-
-    @Autowired
-    public MultiplayerClientImpl(ApplicationEventPublisher eventPublisher) { // Modify constructor
-        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -163,11 +159,11 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             log.error("Failed to connect to server: {}", e.getMessage(), e);
             if (loginResponseListener != null) {
                 loginResponseListener.onLoginResponse(false,
-                        "Connection failed: " + e.getMessage(), "", 0, 0);
+                    "Connection failed: " + e.getMessage(), "", 0, 0);
             }
             if (createUserResponseListener != null) {
                 createUserResponseListener.onCreateUserResponse(false,
-                        "Connection failed: " + e.getMessage());
+                    "Connection failed: " + e.getMessage());
             }
         }
     }
@@ -178,7 +174,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             log.warn("Not connected to server. Cannot send login request.");
             if (loginResponseListener != null) {
                 loginResponseListener.onLoginResponse(false,
-                        "Not connected to server.", "", 0, 0);
+                    "Not connected to server.", "", 0, 0);
             }
             return;
         }
@@ -196,7 +192,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             log.warn("Not connected to server. Cannot send create user request.");
             if (createUserResponseListener != null) {
                 createUserResponseListener.onCreateUserResponse(false,
-                        "Not connected to server.");
+                    "Not connected to server.");
             }
             return;
         }
@@ -217,31 +213,33 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             log.info("Received LoginResponse: success={}, message={}", resp.isSuccess(), resp.getMessage());
             if (loginResponseListener != null) {
                 loginResponseListener.onLoginResponse(
-                        resp.isSuccess(),
-                        resp.getMessage() != null ? resp.getMessage() : (resp.isSuccess() ? "Success" : "Failed"),
-                        resp.getUsername(),
-                        resp.getX(),
-                        resp.getY()
+                    resp.isSuccess(),
+                    resp.getMessage() != null ? resp.getMessage() : (resp.isSuccess() ? "Success" : "Failed"),
+                    resp.getUsername(),
+                    resp.getX(),
+                    resp.getY()
                 );
             }
         } else if (object instanceof NetworkProtocol.CreateUserResponse createResp) {
             log.info("Received CreateUserResponse: success={}, message={}", createResp.isSuccess(), createResp.getMessage());
             if (createUserResponseListener != null) {
                 createUserResponseListener.onCreateUserResponse(
-                        createResp.isSuccess(),
-                        createResp.getMessage() != null ? createResp.getMessage() : (createResp.isSuccess() ? "Account created." : "Failed to create account.")
+                    createResp.isSuccess(),
+                    createResp.getMessage() != null ? createResp.getMessage() : (createResp.isSuccess() ? "Account created." : "Failed to create account.")
                 );
             }
         }
+
         if (object instanceof NetworkProtocol.PlayerStatesUpdate pUpdate) {
+            // Compare with previous state to detect joins/leaves
             Set<String> previousPlayers = new HashSet<>(playerStates.keySet());
             Set<String> currentPlayers = new HashSet<>(pUpdate.getPlayers().keySet());
 
-            // Track disconnected players
+            // Find disconnected players
             Set<String> leaves = new HashSet<>(previousPlayers);
             leaves.removeAll(currentPlayers);
 
-            // Handle player leaves first
+            // Handle player leaves
             for (String username : leaves) {
                 if (!processedLeaves.contains(username)) {
                     handlePlayerLeave(username);
@@ -252,37 +250,37 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             // Clear processed leaves for players that rejoin
             processedLeaves.removeIf(currentPlayers::contains);
 
-            // Track new joins
+            // Find new players
             Set<String> joins = new HashSet<>(currentPlayers);
             joins.removeAll(previousPlayers);
 
-            // Handle new player joins
+            // Handle new joins
             for (String username : joins) {
                 handlePlayerJoin(username);
             }
 
-            // Update states with improved movement detection
+            // Update all player states
             updatePlayerStates(pUpdate.getPlayers());
 
             log.debug("Updated player states. Total players: {}", playerStates.size());
-        }else if (object instanceof NetworkProtocol.ChunkData chunkData) {
+        } else if (object instanceof NetworkProtocol.ChunkData chunkData) {
             ChunkKey key = new ChunkKey(chunkData.getChunkX(), chunkData.getChunkY());
             if (pendingChunkRequests.remove(key)) {
                 log.debug("Received chunk data for ({},{})", chunkData.getChunkX(), chunkData.getChunkY());
                 // Update world service with chunk data
                 Gdx.app.postRunnable(() -> {
                     worldService.loadOrReplaceChunkData(
-                            chunkData.getChunkX(),
-                            chunkData.getChunkY(),
-                            chunkData.getTiles(),
-                            chunkData.getObjects()
+                        chunkData.getChunkX(),
+                        chunkData.getChunkY(),
+                        chunkData.getTiles(),
+                        chunkData.getObjects()
                     );
                 });
             } else {
                 log.warn("Received unrequested chunk data for ({},{})",
-                        chunkData.getChunkX(), chunkData.getChunkY());
+                    chunkData.getChunkX(), chunkData.getChunkY());
             }
-        }else if (object instanceof NetworkProtocol.WorldObjectsUpdate wObjects) {
+        } else if (object instanceof NetworkProtocol.WorldObjectsUpdate wObjects) {
             wObjects.getObjects().forEach(update -> {
                 String key = (update.getTileX() / 16) + "," + (update.getTileY() / 16);
                 ChunkUpdate cu = loadedChunks.get(key);
@@ -302,10 +300,10 @@ public class MultiplayerClientImpl implements MultiplayerClient {
                         if (!found) {
                             ObjectType objType = ObjectType.valueOf(update.getType());
                             WorldObject newObj = new WorldObject(
-                                    update.getTileX(),
-                                    update.getTileY(),
-                                    objType,
-                                    objType.isCollidable()
+                                update.getTileX(),
+                                update.getTileY(),
+                                objType,
+                                objType.isCollidable()
                             );
                             cu.getObjects().add(newObj);
                         }
@@ -319,7 +317,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         } else if (object instanceof io.github.minemon.chat.model.ChatMessage chatMsg) {
             log.info("Received ChatMessage from {}: {}", chatMsg.getSender(), chatMsg.getContent());
             eventPublisher.publishEvent(new ChatMessageReceivedEvent(this, chatMsg));
-        }else if (object instanceof NetworkProtocol.ServerShutdownNotice notice) {
+        } else if (object instanceof NetworkProtocol.ServerShutdownNotice notice) {
             if (screenManager != null) {
                 Gdx.app.postRunnable(() -> {
                     disconnect();  // Make sure we disconnect
@@ -332,9 +330,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     }
 
 
-
     private void handlePlayerLeave(String username) {
-        // Remove from states immediately to stop animations
         playerStates.remove(username);
 
         // Send single leave message
@@ -354,35 +350,52 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         joinMsg.setType(ChatMessage.Type.SYSTEM);
         chatService.handleIncomingMessage(joinMsg);
     }
+
     private void updatePlayerStates(Map<String, PlayerSyncData> newStates) {
+        String localUsername = playerService.getPlayerData().getUsername();
+
         for (Map.Entry<String, PlayerSyncData> entry : newStates.entrySet()) {
             String username = entry.getKey();
             PlayerSyncData newState = entry.getValue();
             PlayerSyncData oldState = playerStates.get(username);
 
+            // Skip local player's movement state updates - let PlayerService handle those
+            if (username.equals(localUsername)) {
+                playerStates.put(username, newState);
+                continue;
+            }
+
+            // For remote players, detect actual movement
             if (oldState != null) {
-                // Calculate actual movement
                 float dx = Math.abs(oldState.getX() - newState.getX());
                 float dy = Math.abs(oldState.getY() - newState.getY());
                 boolean actuallyMoving = dx > 0.001f || dy > 0.001f;
 
-                // Update movement state based on actual position change
-                newState.setMoving(actuallyMoving);
-
-                if (!actuallyMoving) {
-                    // If not actually moving, ensure animation is stopped
-                    newState.setMoving(false);
-                    newState.setAnimationTime(0f);
+                // If position actually changed, they are moving
+                if (actuallyMoving) {
+                    newState.setMoving(true);
+                    // Keep animation time flowing if they were already moving
+                    if (oldState.isMoving()) {
+                        newState.setAnimationTime(oldState.getAnimationTime());
+                    }
                 } else {
-                    // Preserve animation time if continuing movement
-                    newState.setAnimationTime(oldState.getAnimationTime());
+                    // Position hasn't changed, but respect server's movement state
+                    // This allows for movement animations while players are actively moving
+                    newState.setMoving(newState.isMoving());
+                    if (newState.isMoving()) {
+                        // If they're marked as moving, continue animation
+                        newState.setAnimationTime(oldState.getAnimationTime());
+                    } else {
+                        // If they've stopped, reset animation
+                        newState.setAnimationTime(0f);
+                    }
                 }
             }
 
-            // Update the state
             playerStates.put(username, newState);
         }
     }
+
     private boolean checkServerConnection() {
         if (!connected || client == null) {
             log.debug("Lost connection to server");
@@ -433,15 +446,25 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         client.sendTCP(req);
     }
 
-
     @Override
     public void update(float delta) {
         if (!checkServerConnection()) {
             return;
         }
 
-        // Update animation states for actually moving players only
-        for (PlayerSyncData psd : playerStates.values()) {
+        String localUsername = playerService.getPlayerData().getUsername();
+
+        // Update animations independently for each player
+        for (Map.Entry<String, PlayerSyncData> entry : playerStates.entrySet()) {
+            String username = entry.getKey();
+            PlayerSyncData psd = entry.getValue();
+
+            // Skip local player animation updates
+            if (username.equals(localUsername)) {
+                continue;
+            }
+
+            // Update animation time only if the player is moving
             if (psd.isMoving()) {
                 psd.setAnimationTime(psd.getAnimationTime() + delta);
             }
@@ -451,6 +474,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             psd.setLastDirection(psd.getDirection());
         }
     }
+
     @Override
     public void sendMessage(Object msg) {
         if (!connected) return;
@@ -465,5 +489,12 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     @Override
     public void setPendingCreateUserRequest(Runnable action) {
         this.pendingCreateUserRequest = action;
+    }
+
+    @Data
+    @AllArgsConstructor
+    private static class ChunkKey {
+        private final int x;
+        private final int y;
     }
 }
