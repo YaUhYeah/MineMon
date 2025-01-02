@@ -76,7 +76,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
             return;
         }
 
-        server = new Server(BUFFER_SIZE, BUFFER_SIZE);  // Set larger buffer sizes
+        server = new Server(64 * 1024, 64 * 1024);  // Increased to 64KB
         NetworkProtocol.registerClasses(server.getKryo());
 
 
@@ -266,34 +266,54 @@ public class MultiplayerServerImpl implements MultiplayerServer {
 
     private void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest req) {
         try {
-            synchronized (this) {
-                ChunkUpdate chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
+            ChunkUpdate chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
 
-                if (chunk == null) {
-                    worldService.loadChunk(new Vector2(req.getChunkX(), req.getChunkY()));
-                    chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
-
-                    if (chunk == null) {
-                        log.error("Failed to generate chunk ({}, {})", req.getChunkX(), req.getChunkY());
-                        return;
-                    }
-                }
-
-                // Use ChunkTransferManager to split the chunk data into manageable packets
-                List<NetworkProtocol.ChunkData> packets = chunkTransferManager.prepareChunkTransfer(
-                    req.getChunkX(), req.getChunkY(), chunk.getTiles(), chunk.getObjects());
-
-                // Send each packet to the client
-                for (NetworkProtocol.ChunkData packet : packets) {
-                    connection.sendTCP(packet);
-                }
-
-                log.debug("Sent {} chunk packets for chunk ({},{})",
-                    packets.size(), req.getChunkX(), req.getChunkY());
+            if (chunk == null) {
+                worldService.loadChunk(new Vector2(req.getChunkX(), req.getChunkY()));
+                chunk = multiplayerService.getChunkData(req.getChunkX(), req.getChunkY());
             }
+
+            if (chunk == null) {
+                log.error("Failed to generate chunk ({}, {})", req.getChunkX(), req.getChunkY());
+                return;
+            }
+
+            // Split objects into smaller groups to avoid buffer overflow
+            List<WorldObject> allObjects = chunk.getObjects();
+            int maxObjectsPerPacket = 20; // Send fewer objects per packet
+            int totalParts = (allObjects.size() + maxObjectsPerPacket - 1) / maxObjectsPerPacket;
+
+            for (int i = 0; i < totalParts; i++) {
+                NetworkProtocol.ChunkData packet = new NetworkProtocol.ChunkData();
+                packet.setChunkX(req.getChunkX());
+                packet.setChunkY(req.getChunkY());
+
+                // Only send tiles in first packet
+                if (i == 0) {
+                    packet.setTiles(chunk.getTiles());
+                }
+
+                // Get subset of objects for this packet
+                int start = i * maxObjectsPerPacket;
+                int end = Math.min(start + maxObjectsPerPacket, allObjects.size());
+                packet.setObjects(new ArrayList<>(allObjects.subList(start, end)));
+
+                // Set packet metadata
+                packet.setPartial(totalParts > 1);
+                packet.setPartNumber(i);
+                packet.setTotalParts(totalParts);
+
+                try {
+                    connection.sendTCP(packet);
+                    Thread.sleep(50); // Add small delay between packets to prevent overflow
+                } catch (Exception e) {
+                    log.error("Error sending chunk packet {}/{}: {}", i + 1, totalParts, e.getMessage());
+                }
+            }
+
         } catch (Exception e) {
             log.error("Error processing chunk request for ({},{}): {}",
-                req.getChunkX(), req.getChunkY(), e.getMessage(), e);
+                req.getChunkX(), req.getChunkY(), e.getMessage());
         }
     }
 

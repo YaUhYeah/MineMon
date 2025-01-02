@@ -15,6 +15,7 @@ import java.util.Map;
 public interface WorldService {
     void clearWorldData();
     void initIfNeeded();
+    void handleDisconnect();
     WorldData getWorldData();
     boolean isMultiplayerMode();
     void setMultiplayerMode(boolean multiplayer);

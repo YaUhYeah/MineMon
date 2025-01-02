@@ -11,6 +11,7 @@ import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.world.service.TileManager;
 import io.github.minemon.world.service.WorldService;
 import io.github.minemon.world.service.impl.ObjectTextureManager;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
+@Slf4j
 public class WorldRenderer {
     private static final int TILE_SIZE = 32;
     private static final int CHUNK_SIZE = 16;
@@ -54,28 +56,39 @@ public class WorldRenderer {
             initialize();
         }
 
-        // Add safety check for world data
-        if (worldService.getWorldData() == null ||
-            worldService.getWorldData().getWorldName() == null ||
-            worldService.getWorldData().getWorldName().isEmpty()) {
-            // Just clear the screen if no valid world data
-            Gdx.gl.glClearColor(0, 0, 0, 1);
-            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-            return;
-        }
+        Rectangle viewBounds = calculateViewBounds();
+        Map<String, ChunkData> visibleChunks = worldService.getVisibleChunks(viewBounds);
 
-        currentDelta = delta;
-        worldService.setCamera(camera);
+        log.debug("Rendering {} chunks in viewport", visibleChunks.size());
+
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
 
+        // Render ground layer first
         renderGroundLayer();
+
+        // Render below-player objects
         renderBelowPlayerLayer();
-        renderTreeBases();
 
         batch.end();
     }
+    private void renderBelowPlayerLayer() {
+        Rectangle viewBounds = calculateViewBounds();
+        List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
 
+        if (objects.isEmpty() && worldService.isMultiplayerMode()) {
+            log.debug("No visible objects in multiplayer mode - viewport: {}", viewBounds);
+        }
+
+        objects.stream()
+            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.BELOW_PLAYER)
+            .sorted(Comparator.comparingInt(WorldObject::getTileY))
+            .forEach(obj -> {
+                renderObjectWithFade(obj);
+                log.trace("Rendered object {} at ({},{})",
+                    obj.getType(), obj.getTileX(), obj.getTileY());
+            });
+    }
     public void renderTreeTops(float delta) {
         currentDelta = delta;
         batch.begin();
@@ -83,7 +96,15 @@ public class WorldRenderer {
         renderTreeTopsForLayeredTrees();
         batch.end();
     }
+    private void renderTreeTopsForLayeredTrees() {
+        Rectangle viewBounds = calculateViewBounds();
+        List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
 
+        objects.stream()
+            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.LAYERED)
+            .sorted(Comparator.comparingInt(WorldObject::getTileY))
+            .forEach(this::renderTreeTop);
+    }
     private Rectangle calculateViewBounds() {
         OrthographicCamera camera = worldService.getCamera();
         float width = camera.viewportWidth * camera.zoom;
@@ -96,25 +117,27 @@ public class WorldRenderer {
             height + (TILE_SIZE * VIEW_PADDING * 2)
         );
     }
-
     private void renderChunk(ChunkData chunk) {
         if (chunk == null || chunk.getTiles() == null) return;
 
         int chunkPixelX = chunk.getChunkX() * CHUNK_SIZE * TILE_SIZE;
         int chunkPixelY = chunk.getChunkY() * CHUNK_SIZE * TILE_SIZE;
 
+        int[][] tiles = chunk.getTiles();
         for (int x = 0; x < CHUNK_SIZE; x++) {
             for (int y = 0; y < CHUNK_SIZE; y++) {
-                TextureRegion region = tileManager.getRegionForTile(chunk.getTiles()[x][y]);
+                TextureRegion region = tileManager.getRegionForTile(tiles[x][y]);
                 if (region != null) {
                     float worldX = chunkPixelX + (x * TILE_SIZE);
                     float worldY = chunkPixelY + (y * TILE_SIZE);
                     batch.draw(region, worldX, worldY, TILE_SIZE, TILE_SIZE);
+                } else {
+                    log.error("No texture region for tile ID {} at {},{}",
+                        tiles[x][y], x, y);
                 }
             }
         }
     }
-
     private void renderGroundLayer() {
         Rectangle viewBounds = calculateViewBounds();
         Map<String, ChunkData> visibleChunks = worldService.getVisibleChunks(viewBounds);
@@ -142,21 +165,6 @@ public class WorldRenderer {
         }
     }
 
-    private void renderBelowPlayerLayer() {
-        if (worldService.getWorldData() == null ||
-            worldService.getWorldData().getWorldName() == null ||
-            worldService.getWorldData().getWorldName().isEmpty()) {
-            return;
-        }
-        Rectangle viewBounds = calculateViewBounds();
-        List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
-
-        objects.stream()
-            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.BELOW_PLAYER)
-            .sorted(Comparator.comparingInt(WorldObject::getTileY))
-            .forEach(this::renderObjectWithFade);
-    }
-
     private void renderAbovePlayerLayer() {
         Rectangle viewBounds = calculateViewBounds();
         List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
@@ -167,32 +175,54 @@ public class WorldRenderer {
             .forEach(this::renderObjectWithFade);
     }
 
-    private void renderTreeBases() {
-        Rectangle viewBounds = calculateViewBounds();
-        List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
+    private void renderTreeTop(WorldObject tree) {
+        TextureRegion fullTexture = getObjectTexture(tree);
+        if (fullTexture == null) {
+            log.warn("Missing texture for tree object: {}", tree.getType());
+            return;
+        }
 
-        objects.stream()
-            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.LAYERED)
-            .forEach(this::renderTreeBase);
-    }
+        tree.setTimeSinceVisible(tree.getTimeSinceVisible() + currentDelta);
 
-    private void renderTreeTopsForLayeredTrees() {
-        Rectangle viewBounds = calculateViewBounds();
-        List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
+        int totalHeight = fullTexture.getRegionHeight();
+        int topHeight = (totalHeight * 2) / 3;
 
-        objects.stream()
-            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.LAYERED)
-            .sorted(Comparator.comparingInt(WorldObject::getTileY))
-            .forEach(this::renderTreeTop);
+        TextureRegion topRegion = new TextureRegion(
+            fullTexture.getTexture(),
+            fullTexture.getRegionX(),
+            fullTexture.getRegionY(),
+            fullTexture.getRegionWidth(),
+            topHeight
+        );
+
+        float renderX = tree.getTileX() * TILE_SIZE - TILE_SIZE;
+        float renderY = tree.getTileY() * TILE_SIZE + TILE_SIZE;
+
+        float alpha = tree.getFadeAlpha();
+        Color c = batch.getColor();
+        batch.setColor(c.r, c.g, c.b, alpha);
+
+        batch.draw(topRegion,
+            renderX, renderY,
+            tree.getType().getWidthInTiles() * TILE_SIZE,
+            TILE_SIZE * 2);
+
+        batch.setColor(c.r, c.g, c.b, 1f);
     }
 
     private void renderObjectWithFade(WorldObject obj) {
-        TextureRegion texture = getObjectTexture(obj);
-        if (texture == null) return;
+        String regionName = obj.getType().getTextureRegionName();
+        TextureRegion texture = objectTextureManager.getTexture(regionName);
+
+        if (texture == null) {
+            log.warn("No texture found for object type: {} (region: {})",
+                obj.getType(), regionName);
+            return;
+        }
 
         obj.setTimeSinceVisible(obj.getTimeSinceVisible() + currentDelta);
-
         float alpha = obj.getFadeAlpha();
+
         Color c = batch.getColor();
         batch.setColor(c.r, c.g, c.b, alpha);
 
@@ -200,8 +230,8 @@ public class WorldRenderer {
         float y = obj.getTileY() * TILE_SIZE;
         int width = obj.getType().getWidthInTiles() * TILE_SIZE;
         int height = obj.getType().getHeightInTiles() * TILE_SIZE;
-        batch.draw(texture, x, y, width, height);
 
+        batch.draw(texture, x, y, width, height);
         batch.setColor(c.r, c.g, c.b, 1f);
     }
 
@@ -236,39 +266,6 @@ public class WorldRenderer {
 
         batch.setColor(c.r, c.g, c.b, 1f);
     }
-
-    private void renderTreeTop(WorldObject tree) {
-        TextureRegion fullTexture = getObjectTexture(tree);
-        if (fullTexture == null) return;
-
-        tree.setTimeSinceVisible(tree.getTimeSinceVisible() + currentDelta);
-
-        int totalHeight = fullTexture.getRegionHeight();
-        int topHeight = (totalHeight * 2) / 3;
-
-        TextureRegion topRegion = new TextureRegion(
-            fullTexture.getTexture(),
-            fullTexture.getRegionX(),
-            fullTexture.getRegionY(),
-            fullTexture.getRegionWidth(),
-            topHeight
-        );
-
-        float renderX = tree.getTileX() * TILE_SIZE - TILE_SIZE;
-        float renderY = tree.getTileY() * TILE_SIZE + TILE_SIZE;
-
-        float alpha = tree.getFadeAlpha();
-        Color c = batch.getColor();
-        batch.setColor(c.r, c.g, c.b, alpha);
-
-        batch.draw(topRegion,
-            renderX, renderY,
-            tree.getType().getWidthInTiles() * TILE_SIZE,
-            TILE_SIZE * 2);
-
-        batch.setColor(c.r, c.g, c.b, 1f);
-    }
-
 
     private TextureRegion getObjectTexture(WorldObject obj) {
         String regionName = obj.getType().getTextureRegionName();

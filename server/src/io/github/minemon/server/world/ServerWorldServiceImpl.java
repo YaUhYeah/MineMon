@@ -110,6 +110,11 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     }
 
     @Override
+    public void handleDisconnect() {
+
+    }
+
+    @Override
     public WorldData getWorldData() {
         return worldData;
     }

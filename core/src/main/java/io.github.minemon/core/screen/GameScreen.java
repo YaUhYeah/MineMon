@@ -122,6 +122,14 @@ public class GameScreen implements Screen {
             worldService.getWorldData().getWorldName(),
             worldService.getWorldData().getSeed());
 
+        // Ensure the world is initialized
+        if (worldService.isMultiplayerMode() &&
+            worldService.getWorldData().getWorldName() == null) {
+            worldService.getWorldData().setWorldName("serverWorld");
+            worldService.getWorldData().setSeed(System.currentTimeMillis());
+            log.info("Initialized multiplayer world in GameScreen");
+        }
+
         // Who is the current player?
         PlayerData pd = playerService.getPlayerData().getUsername() != null
             ? playerService.getPlayerData()
@@ -231,22 +239,6 @@ public class GameScreen implements Screen {
         pauseOverlay.setUserObject(pauseWindow);
     }
 
-    private void goBackToMenu() {
-        if (multiplayerClient.isConnected()) {
-            multiplayerClient.disconnect();
-        }
-
-        // Clear world data before switching screens
-        worldService.clearWorldData();
-        worldService.setMultiplayerMode(false);
-
-        // Release the connection lock
-        connectionManager.releaseInstanceLock();
-
-        // Switch to mode selection screen
-        screenManager.showScreen(ModeSelectionScreen.class);
-    }
-
     private void togglePause() {
         paused = !paused;
         Window pauseWindow = (Window) pauseOverlay.getUserObject();
@@ -262,7 +254,6 @@ public class GameScreen implements Screen {
             multiplexer.removeProcessor(pauseStage);
         }
     }
-
     private void initializePlayerPosition() {
         String playerName = playerService.getPlayerData().getUsername();
         PlayerData pd = worldService.getPlayerData(playerName);
@@ -271,21 +262,18 @@ public class GameScreen implements Screen {
             pd != null ? pd.getX() : 0f,
             pd != null ? pd.getY() : 0f);
 
-        if (pd == null) {
-            pd = new PlayerData(playerName, 0, 0, PlayerDirection.DOWN);
-            playerService.setPlayerData(pd);
-            log.debug("No existing PD => created new at (0,0)");
-        } else {
-            log.debug("Setting position to PD's tile coords = ({}, {})", (int) pd.getX(), (int) pd.getY());
-            playerService.setPosition((int) pd.getX(), (int) pd.getY());
-        }
+        // Convert world coordinates properly
+        float playerPixelX = pd.getX() * TILE_SIZE;
+        float playerPixelY = pd.getY() * TILE_SIZE;
 
-        float playerPixelX = pd.getX() * TILE_SIZE + TILE_SIZE / 2f;
-        float playerPixelY = pd.getY() * TILE_SIZE + TILE_SIZE / 2f;
+        // Important: Update both camera and player position
         cameraPosX = playerPixelX;
         cameraPosY = playerPixelY;
         camera.position.set(cameraPosX, cameraPosY, 0);
         camera.update();
+
+        // Ensure player service has correct position
+        playerService.setPosition((int)pd.getX(), (int)pd.getY());
     }
     @Override
     public void render(float delta) {
@@ -338,15 +326,23 @@ public class GameScreen implements Screen {
         float px = player.getX() * TILE_SIZE;
         float py = player.getY() * TILE_SIZE;
 
-        // Check if initial chunks are loaded
-        if (!initialChunksLoaded) {
-            boolean allLoaded = checkInitialChunksLoaded(px, py);
-            if (allLoaded) {
-                initialChunksLoaded = true;
+        int chunkX = (int) (px / (CHUNK_SIZE * TILE_SIZE));
+        int chunkY = (int) (py / (CHUNK_SIZE * TILE_SIZE));
+
+        // Load immediate surrounding chunks
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dy = -2; dy <= 2; dy++) {
+                Vector2 chunkPos = new Vector2(chunkX + dx, chunkY + dy);
+                if (!worldService.isChunkLoaded(chunkPos)) {
+                    // Track initial load progress
+                    if (!initialChunksLoaded) {
+                        worldService.loadChunk(chunkPos);
+                    } else if (!multiplayerClient.isPendingChunkRequest(chunkX + dx, chunkY + dy)) {
+                        multiplayerClient.requestChunk(chunkX + dx, chunkY + dy);
+                    }
+                }
             }
         }
-
-        chunkPreloaderService.preloadAround(px, py);
     }
 
     private boolean checkInitialChunksLoaded(float px, float py) {
@@ -583,14 +579,33 @@ public class GameScreen implements Screen {
     }
 
 
+
     @Override
     public void hide() {
         if (multiplayerClient.isConnected()) {
             multiplayerClient.disconnect();
+            // Handle disconnect properly
+            worldService.handleDisconnect();
         }
-        worldService.clearWorldData();
         audioService.stopMenuMusic();
         handlingDisconnect = false;
+    }
+
+    private void goBackToMenu() {
+        if (multiplayerClient.isConnected()) {
+            multiplayerClient.disconnect();
+            worldService.handleDisconnect();
+        }
+
+        // Clear world data before switching screens
+        worldService.clearWorldData();
+        worldService.setMultiplayerMode(false);
+
+        // Release the connection lock
+        connectionManager.releaseInstanceLock();
+
+        // Switch to mode selection screen
+        screenManager.showScreen(ModeSelectionScreen.class);
     }
 
 
