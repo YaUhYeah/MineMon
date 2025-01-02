@@ -314,7 +314,6 @@ public class GameScreen implements Screen {
         pauseStage.act(delta);
         hudStage.act(delta);
     }
-
     private void renderRemotePlayers(SpriteBatch batch, float delta) {
         Map<String, PlayerSyncData> states = multiplayerClient.getPlayerStates();
         String localUsername = playerService.getPlayerData().getUsername();
@@ -333,12 +332,13 @@ public class GameScreen implements Screen {
                 k -> new RemotePlayerAnimator()
             );
 
-            // Update animator state
+            // Update animator state with server's movement state
             animator.updateState(
                 psd.getX() * TILE_SIZE,
                 psd.getY() * TILE_SIZE,
                 psd.isRunning(),
                 PlayerDirection.valueOf(psd.getDirection().toUpperCase()),
+                psd.isMoving(),
                 delta
             );
 
@@ -350,19 +350,26 @@ public class GameScreen implements Screen {
                 animator.getAnimationTime()
             );
 
-            // Draw the player
+            // Draw the player with exact TILE_SIZE dimensions
+            float drawX = animator.getCurrentX();
+            float drawY = animator.getCurrentY();
+
+            // Apply any offset needed to center the sprite
+            float offsetX = (TILE_SIZE - frame.getRegionWidth()) / 2f;
+            float offsetY = (TILE_SIZE - frame.getRegionHeight()) / 2f;
+
+            // Draw with exact tile dimensions
             batch.draw(frame,
-                animator.getCurrentX(),
-                animator.getCurrentY(),
-                TILE_SIZE,  // width
-                TILE_SIZE   // height
+                drawX + offsetX,
+                drawY + offsetY,
+                frame.getRegionWidth(),
+                frame.getRegionHeight()
             );
         }
 
         // Clean up disconnected players
         remotePlayerAnimators.keySet().removeIf(username -> !states.containsKey(username));
     }
-
     private void renderGame(float delta) {
         // Clear
         Gdx.gl.glClearColor(0, 0, 0, 1);

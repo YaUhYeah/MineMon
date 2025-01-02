@@ -3,10 +3,7 @@ package io.github.minemon.player.model;
 import lombok.Getter;
 
 public class RemotePlayerAnimator {
-    private static final float POSITION_LERP_SPEED = 10f;
-    private static final float MIN_MOVEMENT_THRESHOLD = 0.001f;
 
-    // Getters for rendering
     @Getter
     private float currentX, currentY;
     private float targetX, targetY;
@@ -21,6 +18,7 @@ public class RemotePlayerAnimator {
     @Getter
     private PlayerDirection direction;
     private PlayerDirection lastDirection;
+    private float movementTimer; // New timer for movement detection
 
     public RemotePlayerAnimator() {
         this.direction = PlayerDirection.DOWN;
@@ -29,43 +27,50 @@ public class RemotePlayerAnimator {
         this.wasMoving = false;
         this.running = false;
         this.animationTime = 0f;
+        this.movementTimer = 0f;
     }
 
-    public void updateState(float newTargetX, float newTargetY, boolean isRunning, PlayerDirection newDirection, float delta) {
-        // Save last position and direction
+    public void updateState(float newTargetX, float newTargetY, boolean isRunning,
+                            PlayerDirection newDirection, boolean serverMoving, float delta) {
         lastX = currentX;
         lastY = currentY;
         lastDirection = direction;
         wasMoving = moving;
-
-        // Update running state and direction
         this.running = isRunning;
         this.direction = newDirection;
-
-        // Update target position
         this.targetX = newTargetX;
         this.targetY = newTargetY;
 
-        // Smoothly interpolate current position to target
+        float POSITION_LERP_SPEED = 15f;
         float lerpSpeed = POSITION_LERP_SPEED * delta;
         currentX += (targetX - currentX) * lerpSpeed;
         currentY += (targetY - currentY) * lerpSpeed;
 
-        // Determine if we're actually moving based on position changes
         float dx = Math.abs(currentX - lastX);
         float dy = Math.abs(currentY - lastY);
-        moving = dx > MIN_MOVEMENT_THRESHOLD || dy > MIN_MOVEMENT_THRESHOLD;
+        float MIN_MOVEMENT_THRESHOLD = 0.0001f;
+        boolean isMovingNow = dx > MIN_MOVEMENT_THRESHOLD || dy > MIN_MOVEMENT_THRESHOLD;
+
+        if (serverMoving || isMovingNow) {
+            movementTimer = 0.1f; // Set a small buffer time
+            moving = true;
+        } else {
+            movementTimer -= delta;
+            if (movementTimer <= 0) {
+                moving = false;
+                movementTimer = 0;
+            }
+        }
 
         // Update animation time
         if (moving) {
-            animationTime += delta * (running ? 2f : 1f); // Run animations play faster
+            animationTime += delta * (running ? 2f : 1f);
         } else if (wasMoving != moving || lastDirection != direction) {
-            // Reset animation when starting/stopping or changing direction
             animationTime = 0f;
         }
     }
 
-    // For interpolation and state changes
+
     public void setPosition(float x, float y) {
         this.currentX = x;
         this.targetX = x;
@@ -73,11 +78,13 @@ public class RemotePlayerAnimator {
         this.currentY = y;
         this.targetY = y;
         this.lastY = y;
+        this.movementTimer = 0f;
     }
 
     public void resetAnimation() {
         animationTime = 0f;
         moving = false;
         wasMoving = false;
+        movementTimer = 0f;
     }
 }
