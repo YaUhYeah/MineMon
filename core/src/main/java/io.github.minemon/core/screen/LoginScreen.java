@@ -23,6 +23,7 @@ import io.github.minemon.multiplayer.service.impl.ClientConnectionManager;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.service.WorldService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -30,6 +31,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Component
+@Slf4j
 public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListener, MultiplayerClient.CreateUserResponseListener {
 
     private static final float MIN_WIDTH = 800;
@@ -223,7 +225,27 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
     }
 
     private void showLoginDialog(ServerConnectionConfig config) {
-        // First check if another instance is running
+        try {
+            // Clean up any existing locks first
+            connectionManager.releaseInstanceLock();
+
+            // Then try to acquire new lock
+            if (!connectionManager.acquireInstanceLock()) {
+                uiService.getDialogFactory().showError("Connection Error",
+                    "Another instance of the game is already running on this machine.");
+                return;
+            }
+        } catch (Exception e) {
+            log.error("Lock error: {}", e.getMessage());
+            uiService.getDialogFactory().showError("Connection Error",
+                "Failed to establish connection lock. Please restart the game.");
+            return;
+        }
+
+        if (loginDialog != null && loginDialog.isVisible()) {
+            loginDialog.hide();
+        }
+
         if (!connectionManager.acquireInstanceLock()) {
             uiService.getDialogFactory().showError("Connection Error",
                 "Another instance of the game is already running on this machine.");
@@ -551,6 +573,7 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
     @Override
     public void hide() {
         audioService.stopMenuMusic();
+        connectionManager.releaseInstanceLock();
     }
 
     @Override
