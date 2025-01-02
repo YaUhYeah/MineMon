@@ -21,6 +21,7 @@ import io.github.minemon.multiplayer.model.PlayerSyncData;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.player.model.PlayerDirection;
+import io.github.minemon.player.model.RemotePlayerAnimator;
 import io.github.minemon.player.model.RemotePlayerModel;
 import io.github.minemon.player.service.PlayerAnimationService;
 import io.github.minemon.player.service.PlayerService;
@@ -53,6 +54,8 @@ public class GameScreen implements Screen {
     private final ChunkPreloaderService chunkPreloaderService;
     private final MultiplayerClient multiplayerClient;
     private final PlayerAnimationService animationService;
+    private final Map<String, RemotePlayerModel> remoteModels = new ConcurrentHashMap<>();
+    private final Map<String, RemotePlayerAnimator> remotePlayerAnimators = new ConcurrentHashMap<>();
     private OrthographicCamera camera;
     private SpriteBatch batch;
     private BitmapFont font;
@@ -66,7 +69,6 @@ public class GameScreen implements Screen {
     private float cameraPosX, cameraPosY;
     private Image pauseOverlay;
     private InputMultiplexer multiplexer;
-    private final Map<String, RemotePlayerModel> remoteModels = new ConcurrentHashMap<>();
 
     @Autowired
     public GameScreen(PlayerService playerService,
@@ -317,47 +319,48 @@ public class GameScreen implements Screen {
         Map<String, PlayerSyncData> states = multiplayerClient.getPlayerStates();
         String localUsername = playerService.getPlayerData().getUsername();
 
+        // Process all remote players
         for (Map.Entry<String, PlayerSyncData> entry : states.entrySet()) {
             String otherUsername = entry.getKey();
-            // Skip rendering local player
+            // Skip local player
             if (otherUsername.equals(localUsername)) continue;
 
             PlayerSyncData psd = entry.getValue();
 
-            // 1) Get or create the remote model for this username
-            RemotePlayerModel rpm = remoteModels.computeIfAbsent(otherUsername, k -> new RemotePlayerModel());
-
-            // 2) Update the target states from the server data
-            rpm.targetX = psd.getX() * TILE_SIZE;
-            rpm.targetY = psd.getY() * TILE_SIZE;
-            rpm.direction = PlayerDirection.valueOf(psd.getDirection().toUpperCase());
-            rpm.moving = psd.isMoving();
-            rpm.running = psd.isRunning();
-
-            // 3) Smoothly lerp currentX/Y to targetX/Y
-            float lerpFactor = 10f * delta; // adjust speed as needed
-            rpm.currentX += (rpm.targetX - rpm.currentX) * lerpFactor;
-            rpm.currentY += (rpm.targetY - rpm.currentY) * lerpFactor;
-
-            // 4) Update animation time if moving
-            if (rpm.moving) {
-                rpm.animationTime += delta;
-            } else {
-                // Optionally reset animationTime or leave it as-is
-                // rpm.animationTime = 0f;
-            }
-
-            // 5) Select the correct frame
-            TextureRegion frame = animationService.getCurrentFrame(
-                rpm.direction,
-                rpm.moving,
-                rpm.running,
-                rpm.animationTime
+            // Get or create the animator for this player
+            RemotePlayerAnimator animator = remotePlayerAnimators.computeIfAbsent(
+                otherUsername,
+                k -> new RemotePlayerAnimator()
             );
 
-            // 6) Draw at currentX/currentY
-            batch.draw(frame, rpm.currentX, rpm.currentY);
+            // Update animator state
+            animator.updateState(
+                psd.getX() * TILE_SIZE,
+                psd.getY() * TILE_SIZE,
+                psd.isRunning(),
+                PlayerDirection.valueOf(psd.getDirection().toUpperCase()),
+                delta
+            );
+
+            // Get the current animation frame
+            TextureRegion frame = animationService.getCurrentFrame(
+                animator.getDirection(),
+                animator.isMoving(),
+                animator.isRunning(),
+                animator.getAnimationTime()
+            );
+
+            // Draw the player
+            batch.draw(frame,
+                animator.getCurrentX(),
+                animator.getCurrentY(),
+                TILE_SIZE,  // width
+                TILE_SIZE   // height
+            );
         }
+
+        // Clean up disconnected players
+        remotePlayerAnimators.keySet().removeIf(username -> !states.containsKey(username));
     }
 
     private void renderGame(float delta) {
@@ -373,7 +376,7 @@ public class GameScreen implements Screen {
         batch.begin();
         playerService.render(batch);
 
-        renderRemotePlayers(batch,delta);
+        renderRemotePlayers(batch, delta);
 
 
         batch.end();
@@ -501,6 +504,7 @@ public class GameScreen implements Screen {
             multiplayerClient.disconnect();
             log.info("Disconnected from server during screen disposal");
         }
+        remotePlayerAnimators.clear();
 
         batch.dispose();
         font.dispose();
