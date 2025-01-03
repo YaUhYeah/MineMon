@@ -1,7 +1,6 @@
 package io.github.minemon.world.model;
 
 import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
@@ -24,6 +23,10 @@ public class ObjectRenderState {
     @Autowired
     private WorldService worldService;
 
+    /**
+     * Render a "full" texture for the given WorldObject,
+     * automatically incrementing its alpha from 0..1.
+     */
     public void renderObject(SpriteBatch batch, WorldObject obj, TextureRegion texture, float delta) {
         if (texture == null) return;
 
@@ -48,19 +51,49 @@ public class ObjectRenderState {
         int width = obj.getType().getWidthInTiles() * 32;
         int height = obj.getType().getHeightInTiles() * 32;
 
-        // Special handling for trees to center them
-        if (isTreeType(obj.getType())) {
-            x -= 32; // Center the tree on the tile
-        }
+
 
         batch.draw(texture, x, y, width, height);
+
+        // Restore color
         batch.setColor(c.r, c.g, c.b, 1f);
     }
 
+    /**
+     * Overload for partial textures (e.g. top or base of a tree).
+     * Lets you define the exact region & draw location/size.
+     */
+    public void renderObject(
+        SpriteBatch batch, WorldObject obj,
+        TextureRegion texture, float delta,
+        float drawX, float drawY,
+        float drawWidth, float drawHeight
+    ) {
+        if (texture == null) return;
+
+        // Same alpha logic
+        objectCache.put(obj.getId(), obj);
+        float fadeState = objectFadeStates.computeIfAbsent(obj.getId(), k -> 0f);
+        if (fadeState < 1.0f) {
+            fadeState = Math.min(1.0f, fadeState + (delta / FADE_DURATION));
+            objectFadeStates.put(obj.getId(), fadeState);
+        }
+
+        Color c = batch.getColor();
+        batch.setColor(c.r, c.g, c.b, fadeState);
+
+        batch.draw(texture, drawX, drawY, drawWidth, drawHeight);
+
+        batch.setColor(c.r, c.g, c.b, 1f);
+    }
+
+    /**
+     * Periodically call this to remove objects that are far outside the view.
+     */
     public void clearInvisibleObjects(Rectangle viewBounds) {
         // Expand view bounds slightly to prevent premature clearing
         Rectangle expandedBounds = new Rectangle(
-            viewBounds.x - 64, // Two tiles extra buffer
+            viewBounds.x - 64,
             viewBounds.y - 64,
             viewBounds.width + 128,
             viewBounds.height + 128
@@ -85,31 +118,15 @@ public class ObjectRenderState {
         });
     }
 
-    private Rectangle calculateSearchBounds(OrthographicCamera camera) {
-        float width = camera.viewportWidth * camera.zoom;
-        float height = camera.viewportHeight * camera.zoom;
-
-        // Add extra padding to ensure we catch all relevant objects
-        float padding = 128f; // 4 tiles worth of padding
-
-        return new Rectangle(
-            camera.position.x - (width / 2) - padding,
-            camera.position.y - (height / 2) - padding,
-            width + (padding * 2),
-            height + (padding * 2)
-        );
-    }
-
-    // Then update the getObjectById method to use this:
     private WorldObject getObjectById(String id) {
-        // First check our cache
+        // First check cache
         WorldObject cached = objectCache.get(id);
         if (cached != null) {
             return cached;
         }
 
-        // If not in cache, search through all visible objects using proper bounds
-        Rectangle searchBounds = calculateSearchBounds(worldService.getCamera());
+        // If not in cache, search visible objects
+        Rectangle searchBounds = calculateSearchBounds();
         List<WorldObject> visibleObjects = worldService.getVisibleObjects(searchBounds);
 
         for (WorldObject obj : visibleObjects) {
@@ -120,6 +137,18 @@ public class ObjectRenderState {
         }
 
         return null;
+    }
+
+    private Rectangle calculateSearchBounds() {
+        float width = worldService.getCamera().viewportWidth * worldService.getCamera().zoom;
+        float height = worldService.getCamera().viewportHeight * worldService.getCamera().zoom;
+
+        return new Rectangle(
+            worldService.getCamera().position.x - (width / 2) - 128,
+            worldService.getCamera().position.y - (height / 2) - 128,
+            width + 256,
+            height + 256
+        );
     }
 
     private boolean isTreeType(ObjectType type) {

@@ -391,23 +391,73 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         log.info("WorldService initialized with seed {}", seed);
     }
 
+    public void preloadChunksAroundPosition(float tileX, float tileY) {
+        int IMMEDIATE_RADIUS = 2;  // Highest priority chunks
+        int PRELOAD_RADIUS = 4;    // Pre-load these chunks
+
+        int centerChunkX = (int) Math.floor(tileX / CHUNK_SIZE);
+        int centerChunkY = (int) Math.floor(tileY / CHUNK_SIZE);
+
+        // Clear any existing chunk requests to prioritize new location
+        if (multiplayerClient != null) {
+            multiplayerClient.clearPendingChunkRequests();
+        }
+
+        // First load immediate chunks (high priority)
+        for (int dx = -IMMEDIATE_RADIUS; dx <= IMMEDIATE_RADIUS; dx++) {
+            for (int dy = -IMMEDIATE_RADIUS; dy <= IMMEDIATE_RADIUS; dy++) {
+                int chunkX = centerChunkX + dx;
+                int chunkY = centerChunkY + dy;
+
+                if (!isChunkLoaded(new Vector2(chunkX, chunkY))) {
+                    if (isMultiplayerMode && multiplayerClient != null) {
+                        chunkLoadingManager.queueChunkRequest(chunkX, chunkY, true); // high priority
+                    } else {
+                        loadOrGenerateChunk(chunkX, chunkY);
+                    }
+                }
+            }
+        }
+
+        // Then queue preload chunks (lower priority)
+        for (int dx = -PRELOAD_RADIUS; dx <= PRELOAD_RADIUS; dx++) {
+            for (int dy = -PRELOAD_RADIUS; dy <= PRELOAD_RADIUS; dy++) {
+                // Skip immediate chunks we already loaded
+                if (Math.abs(dx) <= IMMEDIATE_RADIUS && Math.abs(dy) <= IMMEDIATE_RADIUS) {
+                    continue;
+                }
+
+                int chunkX = centerChunkX + dx;
+                int chunkY = centerChunkY + dy;
+
+                if (!isChunkLoaded(new Vector2(chunkX, chunkY))) {
+                    if (isMultiplayerMode && multiplayerClient != null) {
+                        chunkLoadingManager.queueChunkRequest(chunkX, chunkY, false); // normal priority
+                    } else {
+                        loadOrGenerateChunk(chunkX, chunkY);
+                    }
+                }
+            }
+        }
+    }
+
     @Override
     public void saveWorldData() {
+        // Don't save if we're in multiplayer mode
+        if (isMultiplayerMode) {
+            log.debug("Skipping world save in multiplayer mode");
+            return;
+        }
+
         if (worldData.getWorldName() == null || worldData.getWorldName().isEmpty()) {
             log.debug("No world loaded, nothing to save.");
             return;
         }
 
         try {
-            // Update timestamps
-            long now = System.currentTimeMillis();
-            long playTime = now - worldData.getLastPlayed();
-            worldData.setPlayedTime(worldData.getPlayedTime() + playTime);
-            worldData.setLastPlayed(now);
-
+            // Only save in singleplayer mode
             jsonWorldDataService.saveWorld(worldData);
-            log.info("Saved world data for '{}' (played time: {}ms)",
-                worldData.getWorldName(), worldData.getPlayedTime());
+            log.info("Saved world data for '{}'", worldData.getWorldName());
         } catch (IOException e) {
             log.error("Failed saving world '{}': {}", worldData.getWorldName(), e.getMessage());
         }
@@ -520,6 +570,7 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             }
         }
     }
+
     public void update(float delta) {
         try {
             if (camera != null) {
@@ -549,6 +600,32 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             width + (bufferSize * 2),
             height + (bufferSize * 2)
         );
+    }
+    @Override
+    public void forceLoadChunksAt(float tileX, float tileY) {
+        // Suppose we want a 2-chunk radius
+        int RADIUS = 2;
+        int chunkX = (int) Math.floor(tileX / CHUNK_SIZE);
+        int chunkY = (int) Math.floor(tileY / CHUNK_SIZE);
+
+        for (int dx = -RADIUS; dx <= RADIUS; dx++) {
+            for (int dy = -RADIUS; dy <= RADIUS; dy++) {
+                int cx = chunkX + dx;
+                int cy = chunkY + dy;
+                Vector2 chunkPos = new Vector2(cx, cy);
+
+                if (!isChunkLoaded(chunkPos)) {
+                    if (isMultiplayerMode()) {
+                        // Use your queue-based or immediate approach
+                        // to request from the server
+                        chunkLoadingManager.queueChunkRequest(cx, cy, true /* highPriority */);
+                    } else {
+                        // Singleplayer -> immediately load/generate
+                        loadOrGenerateChunk(cx, cy);
+                    }
+                }
+            }
+        }
     }
 
     @Override
@@ -591,12 +668,12 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     }
 
     @Override
-    public boolean isChunkLoaded(Vector2 chunkPos) {
+    public synchronized boolean isChunkLoaded(Vector2 chunkPos) {
         String key = String.format("%d,%d", (int) chunkPos.x, (int) chunkPos.y);
-        boolean loaded = worldData.getChunks().containsKey(key);
+        Map<String, ChunkData> chunks = worldData.getChunks();
+        boolean loaded = chunks.containsKey(key);
         if (!loaded) {
-            log.debug("Chunk {} not loaded, current chunks: {}",
-                key, worldData.getChunks().keySet());
+            log.debug("Chunk {} not loaded", key);
         }
         return loaded;
     }

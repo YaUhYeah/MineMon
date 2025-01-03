@@ -55,10 +55,15 @@ public class WorldObject {
         float pixelY = tileY * 32;
 
         if (isTreeType(this.type)) {
-            float baseX = pixelX - 32;
-            return new Rectangle(baseX, pixelY, 64, 64);
-        } else {
-            // Other objects use their normal dimensions
+            float x = tileX * 32;
+            float y = tileY * 32;
+            float width = 2 * 32;   // 2 tiles wide
+            float height = 2 * 32;  // 2 tiles tall, trunk only
+
+            return new Rectangle(x, y, width, height);
+        }
+
+        else {
             return new Rectangle(
                 pixelX,
                 pixelY,

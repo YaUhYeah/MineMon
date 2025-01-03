@@ -18,13 +18,11 @@ import io.github.minemon.world.model.ChunkData;
 import io.github.minemon.world.model.ObjectType;
 import io.github.minemon.world.model.WorldData;
 import io.github.minemon.world.model.WorldObject;
-import io.github.minemon.world.service.TileManager;
-import io.github.minemon.world.service.WorldGenerator;
-import io.github.minemon.world.service.WorldObjectManager;
-import io.github.minemon.world.service.WorldService;
+import io.github.minemon.world.service.*;
 import io.github.minemon.world.service.impl.BaseWorldServiceImpl;
 import io.github.minemon.world.service.impl.JsonWorldDataService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
@@ -57,6 +55,8 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     @Value("${world.defaultName:defaultWorld}")
     private String defaultWorldName;
     private OrthographicCamera camera = null;
+    @Autowired
+    private ChunkLoadingManager chunkLoadingManager;
 
     public ServerWorldServiceImpl(
         WorldGenerator worldGenerator,
@@ -123,6 +123,33 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         } catch (Exception e) {
             log.error("Error loading/generating chunk {},{}: {}", chunkX, chunkY, e.getMessage());
             return null;
+        }
+    }
+
+    @Override
+    public void forceLoadChunksAt(float tileX, float tileY) {
+        // Suppose we want a 2-chunk radius
+        int RADIUS = 2;
+        int chunkX = (int) Math.floor(tileX / CHUNK_SIZE);
+        int chunkY = (int) Math.floor(tileY / CHUNK_SIZE);
+
+        for (int dx = -RADIUS; dx <= RADIUS; dx++) {
+            for (int dy = -RADIUS; dy <= RADIUS; dy++) {
+                int cx = chunkX + dx;
+                int cy = chunkY + dy;
+                Vector2 chunkPos = new Vector2(cx, cy);
+
+                if (!isChunkLoaded(chunkPos)) {
+                    if (isMultiplayerMode()) {
+                        // Use your queue-based or immediate approach
+                        // to request from the server
+                        chunkLoadingManager.queueChunkRequest(cx, cy, true /* highPriority */);
+                    } else {
+                        // Singleplayer -> immediately load/generate
+                        loadOrGenerateChunk(cx, cy);
+                    }
+                }
+            }
         }
     }
 
@@ -425,6 +452,11 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     @Override
     public void generateWorldThumbnail(String worldName) {
         log.info("Skipping world thumbnail generation on server.");
+    }
+
+    @Override
+    public void preloadChunksAroundPosition(float i, float i1) {
+
     }
 
 

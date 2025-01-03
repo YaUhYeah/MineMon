@@ -8,40 +8,39 @@ import com.badlogic.gdx.math.Rectangle;
 import io.github.minemon.world.service.TileManager;
 import io.github.minemon.world.service.WorldService;
 import io.github.minemon.world.service.impl.ObjectTextureManager;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Component
 @Slf4j
 public class WorldRenderer {
     private static final int TILE_SIZE = 32;
     private static final int CHUNK_SIZE = 16;
-
     private static final int VIEW_PADDING = 5;
-    private static final Color VOID_COLOR = new Color(0.1f, 0.1f, 0.1f, 1f); // Dark gray for unloaded chunks
+    private static final Color VOID_COLOR = new Color(0.1f, 0.1f, 0.1f, 1f);
+
     private final TileManager tileManager;
     private final WorldService worldService;
     private final ObjectTextureManager objectTextureManager;
+    private final List<TreeTopRender> treeTopQueue = new ArrayList<>();
 
     private SpriteBatch batch;
     private boolean initialized = false;
-    private final float currentDelta = 0f;
+
     @Autowired
     private ObjectRenderState objectRenderState;
 
-    public WorldRenderer(WorldService worldService, TileManager tileManager, ObjectTextureManager objectTextureManager) {
+    public WorldRenderer(WorldService worldService,
+                         TileManager tileManager,
+                         ObjectTextureManager objectTextureManager) {
         this.worldService = worldService;
         this.tileManager = tileManager;
         this.objectTextureManager = objectTextureManager;
-    }
-
-    public void cleanup() {
-        objectRenderState.reset();
     }
 
     public void initialize() {
@@ -51,148 +50,172 @@ public class WorldRenderer {
         }
     }
 
+    public void cleanup() {
+        objectRenderState.reset();
+    }
+
+    /**
+     * Main entry point for rendering the world. Now includes a 'delta' param.
+     */
     public void render(OrthographicCamera camera, float delta) {
-        if (!initialized) {
+        if (!initialized || batch == null) {
             initialize();
         }
+
+        // Clear any faded-out objects if needed
+        Rectangle viewBounds = calculateViewBounds();
+        objectRenderState.clearInvisibleObjects(viewBounds);
 
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
 
-        // Render ground layer first
+        treeTopQueue.clear();
+
+        // Render the ground tiles (chunks)
         renderGroundLayer();
 
-        // Render all objects using the new fade system
-        List<WorldObject> visibleObjects = worldService.getVisibleObjects(calculateViewBounds());
-        renderObjectsWithFade(visibleObjects, delta);
+        // Render objects below the player
+        renderBelowPlayerLayer(delta);
 
         batch.end();
     }
 
-    private void renderTreeBases() {
-        Rectangle viewBounds = calculateViewBounds();
-        List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
-
-        objects.stream()
-            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.LAYERED)
-            .sorted(Comparator.comparingInt(WorldObject::getTileY))
-            .forEach(tree -> {
-                // Get full texture
-                TextureRegion fullTexture = getObjectTexture(tree);
-                if (fullTexture == null) return;
-
-                int totalHeight = fullTexture.getRegionHeight();
-                int baseHeight = totalHeight / 3;
-
-                // Create region for bottom tiles (2/3 of total height)
-                TextureRegion baseRegion = new TextureRegion(
-                    fullTexture.getTexture(),
-                    fullTexture.getRegionX(),
-                    fullTexture.getRegionY() + totalHeight - (2 * baseHeight), // Start from 1/3 from bottom
-                    fullTexture.getRegionWidth(),
-                    2 * baseHeight // Take 2/3 of height for base
-                );
-
-                float renderX = tree.getTileX() * TILE_SIZE - TILE_SIZE;
-                float renderY = tree.getTileY() * TILE_SIZE;
-
-                tree.setTimeSinceVisible(tree.getTimeSinceVisible() + currentDelta);
-                float alpha = tree.getFadeAlpha();
-                Color c = batch.getColor();
-                batch.setColor(c.r, c.g, c.b, alpha);
-
-                // Draw base portion (bottom 2 tiles)
-                batch.draw(baseRegion,
-                    renderX, renderY,
-                    tree.getType().getWidthInTiles() * TILE_SIZE,
-                    2 * TILE_SIZE); // Draw bottom 2 tiles
-
-                batch.setColor(c.r, c.g, c.b, 1f);
-            });
-    }
-
-    private void renderBelowPlayerObjects() {
-        Rectangle viewBounds = calculateViewBounds();
-        List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
-
-        objects.stream()
-            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.BELOW_PLAYER)
-            .sorted(Comparator.comparingInt(WorldObject::getTileY))
-            .forEach(this::renderObjectWithFade);
-    }
-
+    /**
+     * After everything else, call this to draw the "tops" of trees above the player.
+     */
     public void renderTreeTops(float delta) {
+        if (treeTopQueue.isEmpty()) return;
+
         batch.begin();
-        renderAbovePlayerLayer();
-        renderTreeTopsOnly();
+        for (TreeTopRender top : treeTopQueue) {
+            objectRenderState.renderObject(
+                batch,
+                top.getSourceObject(),
+                top.getTexture(),
+                delta,
+                top.getX(), top.getY(),
+                top.getWidth(), top.getHeight()
+            );
+        }
         batch.end();
     }
 
-    private void renderTreeTopsOnly() {
+    private void renderBelowPlayerLayer(float delta) {
         Rectangle viewBounds = calculateViewBounds();
         List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
 
+        // 1) Non-tree objects
         objects.stream()
-            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.LAYERED)
+            .filter(obj -> !isTreeType(obj.getType()))
             .sorted(Comparator.comparingInt(WorldObject::getTileY))
-            .forEach(tree -> {
-                TextureRegion fullTexture = getObjectTexture(tree);
-                if (fullTexture == null) return;
+            .forEach(obj -> renderRegularObject(obj, delta));
 
-                int totalHeight = fullTexture.getRegionHeight();
-                int topHeight = totalHeight / 3;
-
-                // Create region for top part only (1/3 of total height)
-                TextureRegion topRegion = new TextureRegion(
-                    fullTexture.getTexture(),
-                    fullTexture.getRegionX(),
-                    fullTexture.getRegionY(),
-                    fullTexture.getRegionWidth(),
-                    topHeight
-                );
-
-                float renderX = tree.getTileX() * TILE_SIZE - TILE_SIZE;
-                float renderY = tree.getTileY() * TILE_SIZE + (2 * TILE_SIZE); // Position above base
-
-                float alpha = tree.getFadeAlpha();
-                Color c = batch.getColor();
-                batch.setColor(c.r, c.g, c.b, alpha);
-
-                batch.draw(topRegion,
-                    renderX, renderY,
-                    tree.getType().getWidthInTiles() * TILE_SIZE,
-                    TILE_SIZE);
-
-                batch.setColor(c.r, c.g, c.b, 1f);
-            });
-    }
-
-    private void renderBelowPlayerLayer() {
-        Rectangle viewBounds = calculateViewBounds();
-        List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
-
-        if (objects.isEmpty() && worldService.isMultiplayerMode()) {
-            log.debug("No visible objects in multiplayer mode - viewport: {}", viewBounds);
-        }
-
+        // 2) Trees (split base vs. top)
         objects.stream()
-            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.BELOW_PLAYER)
+            .filter(obj -> isTreeType(obj.getType()))
             .sorted(Comparator.comparingInt(WorldObject::getTileY))
             .forEach(obj -> {
-                renderObjectWithFade(obj);
-                log.trace("Rendered object {} at ({},{})",
-                    obj.getType(), obj.getTileX(), obj.getTileY());
+                renderTreeBase(obj, delta);
+                queueTreeTop(obj);
             });
     }
 
-    private void renderTreeTopsForLayeredTrees() {
-        Rectangle viewBounds = calculateViewBounds();
-        List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
+    private void renderRegularObject(WorldObject obj, float delta) {
+        TextureRegion texture = objectTextureManager.getTexture(
+            obj.getType().getTextureRegionName());
+        if (texture == null) return;
 
-        objects.stream()
-            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.LAYERED)
-            .sorted(Comparator.comparingInt(WorldObject::getTileY))
-            .forEach(this::renderTreeTop);
+        // Delegate drawing + fade logic to objectRenderState
+        objectRenderState.renderObject(batch, obj, texture, delta);
+    }
+    private void renderTreeBase(WorldObject tree, float delta) {
+        TextureRegion full = objectTextureManager.getTexture(tree.getType().getTextureRegionName());
+
+        int totalW = full.getRegionWidth();
+        int totalH = full.getRegionHeight();
+
+        // Example: 70% base, 30% top
+        int basePx = (int)(totalH * 0.7f);
+        TextureRegion baseRegion = new TextureRegion(full, 0, totalH - basePx, totalW, basePx);
+
+        int tileW = tree.getType().getWidthInTiles();  // 2
+        int tileH = tree.getType().getHeightInTiles(); // 3
+
+        int finalW = tileW * 32; // 64
+        int finalH = tileH * 32; // 96
+
+        // For the trunk to sit EXACTLY on the bottom 2 tiles:
+        // We do NOT shift left by 32. We just place it at tileX*32
+        float drawX = tree.getTileX() * 32f;
+        float drawY = tree.getTileY() * 32f;
+
+        // The base is 70% of finalH
+        float baseHeight = finalH * 0.7f; // e.g. 96 * 0.7 = 67.2 → ~67
+
+        // Draw it flush at (drawX, drawY)
+        objectRenderState.renderObject(batch, tree,
+            baseRegion, delta,
+            drawX, drawY,  // no offset
+            finalW, baseHeight
+        );
+    }
+    private void queueTreeTop(WorldObject tree) {
+        TextureRegion fullTexture = objectTextureManager.getTexture(
+            tree.getType().getTextureRegionName()
+        );
+        if (fullTexture == null) return;
+
+        int totalWidth  = fullTexture.getRegionWidth();
+        int totalHeight = fullTexture.getRegionHeight();
+
+        // For a 70% base, top is 30%
+        int basePx = (int) (totalHeight * 0.7f);
+        int topPx  = totalHeight - basePx; // 30%
+
+        // The "top" portion is physically at the top of the image? Or bottom?
+        // If your base slice used (y=totalHeight - basePx), then top is from y=0..topPx:
+        TextureRegion topRegion = new TextureRegion(
+            fullTexture,
+            0,
+            0,          // top is physically at Y=0 in the image
+            totalWidth,
+            topPx
+        );
+
+        // Convert tile size
+        int tileW = tree.getType().getWidthInTiles();    // e.g., 2
+        int tileH = tree.getType().getHeightInTiles();   // e.g., 3
+        int finalWidthPx  = tileW * TILE_SIZE;           // 64 for a 2-tile wide
+        int finalHeightPx = tileH * TILE_SIZE;           // 96 for a 3-tile tall
+
+        // The base is 70%, top is 30%
+        int baseHeightPx = (int) (finalHeightPx * 0.7f);         int topHeightPx  = finalHeightPx - baseHeightPx;
+
+        float drawX = tree.getTileX() * TILE_SIZE;
+        float drawY = tree.getTileY() * TILE_SIZE + baseHeightPx;
+
+        drawY -= 1f;
+
+        TreeTopRender topData = new TreeTopRender(
+            topRegion,
+            drawX, drawY,
+            finalWidthPx,
+            topHeightPx,
+            tree
+        );
+        treeTopQueue.add(topData);
+    }
+
+
+    private boolean isTreeType(ObjectType type) {
+        return type == ObjectType.TREE_0 ||
+            type == ObjectType.TREE_1 ||
+            type == ObjectType.SNOW_TREE ||
+            type == ObjectType.HAUNTED_TREE ||
+            type == ObjectType.RUINS_TREE ||
+            type == ObjectType.APRICORN_TREE ||
+            type == ObjectType.RAIN_TREE ||
+            type == ObjectType.CHERRY_TREE;
     }
 
     private Rectangle calculateViewBounds() {
@@ -206,6 +229,32 @@ public class WorldRenderer {
             width + (TILE_SIZE * VIEW_PADDING * 2),
             height + (TILE_SIZE * VIEW_PADDING * 2)
         );
+    }
+
+    private void renderGroundLayer() {
+        Rectangle viewBounds = calculateViewBounds();
+        Map<String, ChunkData> visibleChunks = worldService.getVisibleChunks(viewBounds);
+
+        // Draw "void" for unloaded chunks
+        batch.setColor(VOID_COLOR);
+        for (int x = (int) viewBounds.x; x < viewBounds.x + viewBounds.width; x += CHUNK_SIZE * TILE_SIZE) {
+            for (int y = (int) viewBounds.y; y < viewBounds.y + viewBounds.height; y += CHUNK_SIZE * TILE_SIZE) {
+                int chunkX = x / (CHUNK_SIZE * TILE_SIZE);
+                int chunkY = y / (CHUNK_SIZE * TILE_SIZE);
+                String key = chunkX + "," + chunkY;
+                if (!visibleChunks.containsKey(key)) {
+                    // draw a placeholder
+                    batch.draw(tileManager.getRegionForTile(0), x, y,
+                        CHUNK_SIZE * TILE_SIZE, CHUNK_SIZE * TILE_SIZE);
+                }
+            }
+        }
+        batch.setColor(Color.WHITE);
+
+        // Now draw actual loaded chunks
+        for (ChunkData chunk : visibleChunks.values()) {
+            renderChunk(chunk);
+        }
     }
 
     private void renderChunk(ChunkData chunk) {
@@ -223,160 +272,10 @@ public class WorldRenderer {
                     float worldY = chunkPixelY + (y * TILE_SIZE);
                     batch.draw(region, worldX, worldY, TILE_SIZE, TILE_SIZE);
                 } else {
-                    log.error("No texture region for tile ID {} at {},{}",
-                        tiles[x][y], x, y);
+                    log.error("No texture region for tile ID {} at {},{}", tiles[x][y], x, y);
                 }
             }
         }
-    }
-
-    private void renderGroundLayer() {
-        Rectangle viewBounds = calculateViewBounds();
-        Map<String, ChunkData> visibleChunks = worldService.getVisibleChunks(viewBounds);
-
-        // Draw void color for unloaded chunks
-        batch.setColor(VOID_COLOR);
-        for (int x = (int) viewBounds.x; x < viewBounds.x + viewBounds.width; x += CHUNK_SIZE * TILE_SIZE) {
-            for (int y = (int) viewBounds.y; y < viewBounds.y + viewBounds.height; y += CHUNK_SIZE * TILE_SIZE) {
-                int chunkX = x / (CHUNK_SIZE * TILE_SIZE);
-                int chunkY = y / (CHUNK_SIZE * TILE_SIZE);
-                String key = chunkX + "," + chunkY;
-                if (!visibleChunks.containsKey(key)) {
-                    batch.draw(tileManager.getRegionForTile(0), // Use a blank tile texture
-                        x, y,
-                        CHUNK_SIZE * TILE_SIZE,
-                        CHUNK_SIZE * TILE_SIZE);
-                }
-            }
-        }
-
-        // Reset color and draw loaded chunks
-        batch.setColor(Color.WHITE);
-        for (ChunkData chunk : visibleChunks.values()) {
-            renderChunk(chunk);
-        }
-    }
-
-    private void renderAbovePlayerLayer() {
-        Rectangle viewBounds = calculateViewBounds();
-        List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
-
-        objects.stream()
-            .filter(obj -> obj.getType().getRenderLayer() == ObjectType.RenderLayer.ABOVE_PLAYER)
-            .sorted(Comparator.comparingInt(WorldObject::getTileY))
-            .forEach(this::renderObjectWithFade);
-    }
-
-    private void renderTreeTop(WorldObject tree) {
-        TextureRegion fullTexture = getObjectTexture(tree);
-        if (fullTexture == null) {
-            log.warn("Missing texture for tree object: {}", tree.getType());
-            return;
-        }
-
-        tree.setTimeSinceVisible(tree.getTimeSinceVisible() + currentDelta);
-
-        int totalHeight = fullTexture.getRegionHeight();
-        int topHeight = (totalHeight * 2) / 3;
-
-        TextureRegion topRegion = new TextureRegion(
-            fullTexture.getTexture(),
-            fullTexture.getRegionX(),
-            fullTexture.getRegionY(),
-            fullTexture.getRegionWidth(),
-            topHeight
-        );
-
-        float renderX = tree.getTileX() * TILE_SIZE - TILE_SIZE;
-        float renderY = tree.getTileY() * TILE_SIZE + TILE_SIZE;
-
-        float alpha = tree.getFadeAlpha();
-        Color c = batch.getColor();
-        batch.setColor(c.r, c.g, c.b, alpha);
-
-        batch.draw(topRegion,
-            renderX, renderY,
-            tree.getType().getWidthInTiles() * TILE_SIZE,
-            TILE_SIZE * 2);
-
-        batch.setColor(c.r, c.g, c.b, 1f);
-    }
-
-    private void renderObjectsWithFade(List<WorldObject> objects, float delta) {
-        Rectangle viewBounds = calculateViewBounds();
-        objectRenderState.clearInvisibleObjects(viewBounds);
-
-        objects.stream()
-            .sorted(Comparator.comparingInt(WorldObject::getTileY))
-            .forEach(obj -> {
-                TextureRegion texture = objectTextureManager.getTexture(
-                    obj.getType().getTextureRegionName());
-                if (texture != null) {
-                    objectRenderState.renderObject(batch, obj, texture, delta);
-                }
-            });
-    }
-
-    private void renderObjectWithFade(WorldObject obj) {
-        String regionName = obj.getType().getTextureRegionName();
-        TextureRegion texture = objectTextureManager.getTexture(regionName);
-
-        if (texture == null) {
-            log.warn("No texture found for object type: {} (region: {})",
-                obj.getType(), regionName);
-            return;
-        }
-
-        obj.setTimeSinceVisible(obj.getTimeSinceVisible() + currentDelta);
-        float alpha = obj.getFadeAlpha();
-
-        Color c = batch.getColor();
-        batch.setColor(c.r, c.g, c.b, alpha);
-
-        float x = obj.getTileX() * TILE_SIZE;
-        float y = obj.getTileY() * TILE_SIZE;
-        int width = obj.getType().getWidthInTiles() * TILE_SIZE;
-        int height = obj.getType().getHeightInTiles() * TILE_SIZE;
-
-        batch.draw(texture, x, y, width, height);
-        batch.setColor(c.r, c.g, c.b, 1f);
-    }
-
-    private void renderTreeBase(WorldObject tree) {
-        TextureRegion fullTexture = getObjectTexture(tree);
-        if (fullTexture == null) return;
-
-        tree.setTimeSinceVisible(tree.getTimeSinceVisible() + currentDelta);
-
-        int totalHeight = fullTexture.getRegionHeight();
-        int baseHeight = totalHeight / 3;
-
-        TextureRegion baseRegion = new TextureRegion(
-            fullTexture.getTexture(),
-            fullTexture.getRegionX(),
-            fullTexture.getRegionY() + totalHeight - baseHeight,
-            fullTexture.getRegionWidth(),
-            baseHeight
-        );
-
-        float renderX = tree.getTileX() * TILE_SIZE - TILE_SIZE;
-        float renderY = tree.getTileY() * TILE_SIZE;
-
-        float alpha = tree.getFadeAlpha();
-        Color c = batch.getColor();
-        batch.setColor(c.r, c.g, c.b, alpha);
-
-        batch.draw(baseRegion,
-            renderX, renderY,
-            tree.getType().getWidthInTiles() * TILE_SIZE,
-            TILE_SIZE);
-
-        batch.setColor(c.r, c.g, c.b, 1f);
-    }
-
-    private TextureRegion getObjectTexture(WorldObject obj) {
-        String regionName = obj.getType().getTextureRegionName();
-        return objectTextureManager.getTexture(regionName);
     }
 
     public void dispose() {
@@ -385,5 +284,20 @@ public class WorldRenderer {
             batch = null;
         }
         cleanup();
+    }
+
+    @AllArgsConstructor
+    @Getter
+    private static class TreeTopRender {
+        private final TextureRegion texture;
+        private final float x;
+        private final float y;
+        private final float width;
+        private final float height;
+
+        /**
+         * The same WorldObject, so we can fade it using the same ID.
+         */
+        private final WorldObject sourceObject;
     }
 }

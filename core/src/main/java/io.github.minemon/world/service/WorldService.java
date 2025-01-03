@@ -14,38 +14,65 @@ import java.util.Map;
 
 public interface WorldService {
     void clearWorldData();
+
     void initIfNeeded();
+
+    void forceLoadChunksAt(float tileX, float tileY);
+
     ChunkData loadOrGenerateChunk(int chunkX, int chunkY);
+
     void update(float delta);
+
     void handleDisconnect();
+
     WorldData getWorldData();
+
     boolean isMultiplayerMode();
+
     void setMultiplayerMode(boolean multiplayer);
+
     void loadOrReplaceChunkData(int chunkX, int chunkY, int[][] tiles, List<WorldObject> objects);
+
     void updateWorldObjectState(WorldObjectUpdate update);
+
     TileManager getTileManager();
+
     boolean createWorld(String worldName, long seed);
+
     void loadWorld(String worldName);
+
     List<WorldObject> getVisibleObjects(Rectangle viewBounds);
+
     OrthographicCamera getCamera();
-    boolean isChunkLoaded(Vector2 chunkPos);
-    void loadChunk(Vector2 chunkPos);
+
     void setCamera(OrthographicCamera camera);
+
+    boolean isChunkLoaded(Vector2 chunkPos);
+
+    void loadChunk(Vector2 chunkPos);
+
     Map<String, ChunkData> getVisibleChunks(Rectangle viewBounds);
+
     void saveWorldData();
+
     void loadWorldData();
 
     List<String> getAvailableWorlds();
+
     void deleteWorld(String worldName);
 
 
     void setPlayerData(PlayerData playerData);
+
     PlayerData getPlayerData(String username);
 
 
     int[][] getChunkTiles(int chunkX, int chunkY);
+
     void regenerateChunk(int chunkX, int chunkY);
 
 
     void generateWorldThumbnail(String worldName);
+
+    void preloadChunksAroundPosition(float i, float i1);
 }

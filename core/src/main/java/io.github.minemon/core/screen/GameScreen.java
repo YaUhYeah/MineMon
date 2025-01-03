@@ -21,7 +21,6 @@ import io.github.minemon.multiplayer.service.impl.ClientConnectionManager;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.player.model.PlayerDirection;
 import io.github.minemon.player.model.RemotePlayerAnimator;
-import io.github.minemon.player.model.RemotePlayerModel;
 import io.github.minemon.player.service.PlayerAnimationService;
 import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.biome.service.BiomeService;
@@ -56,7 +55,6 @@ public class GameScreen implements Screen {
     private final ChunkPreloaderService chunkPreloaderService;
     private final MultiplayerClient multiplayerClient;
     private final PlayerAnimationService animationService;
-    private final Map<String, RemotePlayerModel> remoteModels = new ConcurrentHashMap<>();
     private final Map<String, RemotePlayerAnimator> remotePlayerAnimators = new ConcurrentHashMap<>();
     private boolean handlingDisconnect = false;
     private OrthographicCamera camera;
@@ -487,29 +485,26 @@ public class GameScreen implements Screen {
         float dy = Math.abs(currentY - lastY);
 
         return dx > 0.001f || dy > 0.001f;
-    }
-
-    private void renderGame(float delta) {
+    }private void renderGame(float delta) {
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        // Draw world
-        worldRenderer.render(camera, delta);
+        // Draw world and object bases
+        worldRenderer.render(camera,delta);
 
-        // 1) Draw local player
+        // Draw local player
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
         playerService.render(batch);
 
+        // Draw remote players
         renderRemotePlayers(batch, delta);
-
-
         batch.end();
 
-        // Additional layered rendering if needed
+        // Draw tree tops on top of players
         worldRenderer.renderTreeTops(delta);
 
-        // Draw pause overlay if paused
+        // Draw UI elements last
         if (paused) {
             pauseStage.draw();
         }
@@ -517,12 +512,10 @@ public class GameScreen implements Screen {
         hudStage.act(delta);
         hudStage.draw();
 
-        // Optional debug info
         if (showDebug) {
             renderDebugInfo();
         }
     }
-
 
     private void updateCamera() {
         float playerPixelX = playerService.getPlayerData().getX() * TILE_SIZE + TILE_SIZE / 2f;
@@ -531,9 +524,13 @@ public class GameScreen implements Screen {
         cameraPosX = lerp(cameraPosX, playerPixelX);
         cameraPosY = lerp(cameraPosY, playerPixelY);
 
+        cameraPosX = Math.round(cameraPosX);
+        cameraPosY = Math.round(cameraPosY);
+
         camera.position.set(cameraPosX, cameraPosY, 0);
         camera.update();
     }
+
 
     private void renderDebugInfo() {
         batch.setProjectionMatrix(hudStage.getCamera().combined);

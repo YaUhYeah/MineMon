@@ -1,5 +1,6 @@
 package io.github.minemon.world.service.impl;
 
+import com.badlogic.gdx.math.Rectangle;
 import io.github.minemon.world.biome.model.Biome;
 import io.github.minemon.world.model.ObjectType;
 import io.github.minemon.world.model.WorldObject;
@@ -13,6 +14,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -21,8 +23,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class WorldObjectManagerImpl implements WorldObjectManager {
 
     private static final int CHUNK_SIZE = 16;
+    private static final int TILE_SIZE = 32;
     private final boolean isServer;
-    private static final int TREE_SPACING = 4;
+    private static final float MIN_OBJECT_SPACING = 2.0f;  // Minimum tiles between objects
+    private static final float TREE_SPACING = 3.0f;       // Minimum tiles between trees
 
     private final Map<String, List<WorldObject>> objectsByChunk = new ConcurrentHashMap<>();
 
@@ -57,7 +61,36 @@ public class WorldObjectManagerImpl implements WorldObjectManager {
         objectsByChunk.put(key, objects);
         log.debug("Loaded {} objects for chunk {}", objects.size(), key);
     }
+    private boolean canPlaceObject(List<WorldObject> existingObjects, int x, int y, ObjectType type) {
+        float minSpacing = type.name().contains("TREE") ? 4.0f : 2.0f;
+        Rectangle newObjBounds = new Rectangle(
+            x * TILE_SIZE - (type.getWidthInTiles() * TILE_SIZE / 2f),
+            y * TILE_SIZE,
+            type.getWidthInTiles() * TILE_SIZE,
+            type.getHeightInTiles() * TILE_SIZE
+        );
 
+        // Add spacing buffer
+        newObjBounds.x -= TILE_SIZE * minSpacing;
+        newObjBounds.y -= TILE_SIZE * minSpacing;
+        newObjBounds.width += TILE_SIZE * minSpacing * 2;
+        newObjBounds.height += TILE_SIZE * minSpacing * 2;
+
+        for (WorldObject existing : existingObjects) {
+            Rectangle existingBounds = new Rectangle(
+                existing.getTileX() * TILE_SIZE - (existing.getType().getWidthInTiles() * TILE_SIZE / 2f),
+                existing.getTileY() * TILE_SIZE,
+                existing.getType().getWidthInTiles() * TILE_SIZE,
+                existing.getType().getHeightInTiles() * TILE_SIZE
+            );
+
+            if (newObjBounds.overlaps(existingBounds)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
     @Override
     public List<WorldObject> generateObjectsForChunk(int chunkX, int chunkY, int[][] tiles, Biome biome, long seed) {
         List<WorldObject> objects = new CopyOnWriteArrayList<>();
@@ -70,29 +103,47 @@ public class WorldObjectManagerImpl implements WorldObjectManager {
 
         // First pass: Generate trees with proper spacing
         if (biome.getSpawnableObjects() != null) {
-            for (String objTypeName : biome.getSpawnableObjects()) {
+            // Sort objects so trees are placed first (they need more space)
+            List<String> sortedObjects = new ArrayList<>(biome.getSpawnableObjects());
+            sortedObjects.sort((a, b) -> {
+                boolean aIsTree = a.contains("TREE");
+                boolean bIsTree = b.contains("TREE");
+                return bIsTree ? -1 : (aIsTree ? 1 : 0); // Trees first
+            });
+
+            for (String objTypeName : sortedObjects) {
                 ObjectType type;
                 try {
                     type = ObjectType.valueOf(objTypeName);
+                    double spawnChance = biome.getSpawnChanceForObject(type);
+                    int attempts = (int)(spawnChance * (CHUNK_SIZE * CHUNK_SIZE));
+
+                    for (int i = 0; i < attempts; i++) {
+                        int localX = random.nextInt(CHUNK_SIZE);
+                        int localY = random.nextInt(CHUNK_SIZE);
+
+                        // Check if tile type is valid
+                        if (!biome.getAllowedTileTypes().contains(tiles[localX][localY])) {
+                            continue;
+                        }
+
+                        int worldX = chunkX * CHUNK_SIZE + localX;
+                        int worldY = chunkY * CHUNK_SIZE + localY;
+
+                        if (canPlaceObject(objects, worldX, worldY, type)) {
+                            WorldObject obj = new WorldObject(worldX, worldY, type, type.isCollidable());
+                            objects.add(obj);
+                        }
+                    }
                 } catch (IllegalArgumentException e) {
                     log.warn("Invalid object type {} in biome {}", objTypeName, biome.getName());
-                    continue;
-                }
-
-                // Special handling for trees
-                if (isTreeType(type)) {
-                    generateTreesWithSpacing(objects, type, biome, tiles, random, chunkX, chunkY);
-                } else {
-                    // Handle other objects normally
-                    generateRegularObjects(objects, type, biome, tiles, random, chunkX, chunkY);
                 }
             }
         }
 
-        String key = chunkX + "," + chunkY;
-        objectsByChunk.put(key, objects);
         return objects;
     }
+
 
     private void generateTreesWithSpacing(List<WorldObject> objects, ObjectType type,
                                           Biome biome, int[][] tiles, Random random,
@@ -141,9 +192,8 @@ public class WorldObjectManagerImpl implements WorldObjectManager {
             }
         }
     }
-
     private boolean hasSpaceForObject(List<WorldObject> objects, int x, int y, ObjectType type) {
-        int minSpacing = type.name().contains("TREE") ? TREE_SPACING : 2;
+        int minSpacing = type.name().contains("TREE") ? (int) TREE_SPACING : 2;
 
         for (WorldObject obj : objects) {
             int dx = Math.abs(obj.getTileX() - x);
