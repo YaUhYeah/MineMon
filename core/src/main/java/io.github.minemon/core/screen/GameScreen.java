@@ -27,9 +27,9 @@ import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.biome.service.BiomeService;
 import io.github.minemon.world.model.WorldRenderer;
 import io.github.minemon.world.service.ChunkLoaderService;
+import io.github.minemon.world.service.ChunkLoadingManager;
 import io.github.minemon.world.service.ChunkPreloaderService;
 import io.github.minemon.world.service.WorldService;
-import io.github.minemon.world.service.impl.ClientWorldServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -75,7 +75,10 @@ public class GameScreen implements Screen {
     private float cameraPosX, cameraPosY;
     private Image pauseOverlay;
     private InputMultiplexer multiplexer;
-    private boolean initialChunksLoaded = false;
+    private boolean isActuallyMultiplayer = false;
+    @Autowired
+    private ChunkLoadingManager chunkLoadingManager;
+
     @Autowired
     public GameScreen(PlayerService playerService,
                       WorldService worldService,
@@ -102,14 +105,20 @@ public class GameScreen implements Screen {
     }
 
     private void handleDisconnection() {
-        if (!handlingDisconnect && multiplayerClient != null && !multiplayerClient.isConnected()
+        // Skip disconnect handling for singleplayer worlds
+        if (!isActuallyMultiplayer) {
+            return;
+        }
+
+        // Only handle actual multiplayer disconnects
+        if (!handlingDisconnect && multiplayerClient != null
+            && !multiplayerClient.isConnected()
             && worldService.isMultiplayerMode()) {
+
             handlingDisconnect = true;
-            // Save any necessary data before disconnection
             worldService.saveWorldData();
-            // Handle the disconnection
-            ((ClientWorldServiceImpl) worldService).handleDisconnect();
-            // Show disconnect screen
+            worldService.handleDisconnect();
+
             ServerDisconnectScreen disconnectScreen = screenManager.getScreen(ServerDisconnectScreen.class);
             disconnectScreen.setDisconnectReason("TIMEOUT");
             screenManager.showScreen(ServerDisconnectScreen.class);
@@ -118,6 +127,8 @@ public class GameScreen implements Screen {
 
     @Override
     public void show() {
+        handlingDisconnect = false;
+        isActuallyMultiplayer = worldService.isMultiplayerMode();
         log.debug("GameScreen.show() >> current worldName={}, seed={}",
             worldService.getWorldData().getWorldName(),
             worldService.getWorldData().getSeed());
@@ -254,6 +265,7 @@ public class GameScreen implements Screen {
             multiplexer.removeProcessor(pauseStage);
         }
     }
+
     private void initializePlayerPosition() {
         String playerName = playerService.getPlayerData().getUsername();
         PlayerData pd = worldService.getPlayerData(playerName);
@@ -263,6 +275,7 @@ public class GameScreen implements Screen {
             pd != null ? pd.getY() : 0f);
 
         // Convert world coordinates properly
+        assert pd != null;
         float playerPixelX = pd.getX() * TILE_SIZE;
         float playerPixelY = pd.getY() * TILE_SIZE;
 
@@ -273,34 +286,102 @@ public class GameScreen implements Screen {
         camera.update();
 
         // Ensure player service has correct position
-        playerService.setPosition((int)pd.getX(), (int)pd.getY());
+        playerService.setPosition((int) pd.getX(), (int) pd.getY());
     }
+
+    private void ensureChunksLoaded() {
+        PlayerData player = playerService.getPlayerData();
+        float px = player.getX() * TILE_SIZE;
+        float py = player.getY() * TILE_SIZE;
+
+        int currentChunkX = (int) Math.floor(px / (CHUNK_SIZE * TILE_SIZE));
+        int currentChunkY = (int) Math.floor(py / (CHUNK_SIZE * TILE_SIZE));
+
+        // Immediate vicinity chunks - must be loaded before rendering
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dy = -2; dy <= 2; dy++) {
+                int chunkX = currentChunkX + dx;
+                int chunkY = currentChunkY + dy;
+                Vector2 chunkPos = new Vector2(chunkX, chunkY);
+
+                if (!worldService.isChunkLoaded(chunkPos)) {
+                    if (worldService.isMultiplayerMode()) {
+                        // Only request if not already pending
+                        if (!multiplayerClient.isPendingChunkRequest(chunkX, chunkY)) {
+                            multiplayerClient.requestChunk(chunkX, chunkY);
+                        }
+                    } else {
+                        worldService.loadChunk(chunkPos);
+                    }
+                }
+            }
+        }
+
+        // Extended radius for preloading
+        for (int dx = -4; dx <= 4; dx++) {
+            for (int dy = -4; dy <= 4; dy++) {
+                // Skip chunks already processed in immediate vicinity
+                if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) continue;
+
+                int chunkX = currentChunkX + dx;
+                int chunkY = currentChunkY + dy;
+                Vector2 chunkPos = new Vector2(chunkX, chunkY);
+
+                if (!worldService.isChunkLoaded(chunkPos)) {
+                    if (worldService.isMultiplayerMode()) {
+                        if (!multiplayerClient.isPendingChunkRequest(chunkX, chunkY)) {
+                            multiplayerClient.requestChunk(chunkX, chunkY);
+                        }
+                    } else {
+                        worldService.loadChunk(chunkPos);
+                    }
+                }
+            }
+        }
+    }
+
+    private void checkAndRetryFailedChunks() {
+        PlayerData player = playerService.getPlayerData();
+        float px = player.getX() * TILE_SIZE;
+        float py = player.getY() * TILE_SIZE;
+        int currentChunkX = (int) Math.floor(px / (CHUNK_SIZE * TILE_SIZE));
+        int currentChunkY = (int) Math.floor(py / (CHUNK_SIZE * TILE_SIZE));
+
+        // Retry immediate vicinity chunks if they failed to load
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dy = -2; dy <= 2; dy++) {
+                int chunkX = currentChunkX + dx;
+                int chunkY = currentChunkY + dy;
+                Vector2 chunkPos = new Vector2(chunkX, chunkY);
+
+                if (!worldService.isChunkLoaded(chunkPos) && worldService.isMultiplayerMode()) {
+                    if (!multiplayerClient.isPendingChunkRequest(chunkX, chunkY)) {
+                        multiplayerClient.requestChunk(chunkX, chunkY);
+                    }
+                }
+            }
+        }
+    }
+
     @Override
     public void render(float delta) {
         // Check for disconnection first
         handleDisconnection();
 
-        // Only proceed with normal rendering if we're not handling a disconnection
         if (!handlingDisconnect) {
+            // Update chunk loading manager
+            chunkLoadingManager.update();
+
+            // Update world service which handles chunk unloading
+            worldService.update(delta);
+
             handleInput();
             multiplayerClient.update(delta);
             updateGame(delta);
-            preloadChunksAhead();
+
+            // Render everything
             renderGame(delta);
         }
-    }
-    private void renderLoadingScreen() {
-        Gdx.gl.glClearColor(0, 0, 0, 1);
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-
-        batch.begin();
-        // Draw loading indicator
-        String loadingText = "Loading world...";
-        GlyphLayout layout = new GlyphLayout(font, loadingText);
-        font.draw(batch, loadingText,
-            (Gdx.graphics.getWidth() - layout.width) / 2,
-            (Gdx.graphics.getHeight() + layout.height) / 2);
-        batch.end();
     }
 
     private void handleInput() {
@@ -319,46 +400,6 @@ public class GameScreen implements Screen {
                 togglePause();
             }
         }
-    }
-
-    private void preloadChunksAhead() {
-        PlayerData player = playerService.getPlayerData();
-        float px = player.getX() * TILE_SIZE;
-        float py = player.getY() * TILE_SIZE;
-
-        int chunkX = (int) (px / (CHUNK_SIZE * TILE_SIZE));
-        int chunkY = (int) (py / (CHUNK_SIZE * TILE_SIZE));
-
-        // Load immediate surrounding chunks
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dy = -2; dy <= 2; dy++) {
-                Vector2 chunkPos = new Vector2(chunkX + dx, chunkY + dy);
-                if (!worldService.isChunkLoaded(chunkPos)) {
-                    // Track initial load progress
-                    if (!initialChunksLoaded) {
-                        worldService.loadChunk(chunkPos);
-                    } else if (!multiplayerClient.isPendingChunkRequest(chunkX + dx, chunkY + dy)) {
-                        multiplayerClient.requestChunk(chunkX + dx, chunkY + dy);
-                    }
-                }
-            }
-        }
-    }
-
-    private boolean checkInitialChunksLoaded(float px, float py) {
-        int chunkX = (int) (px / (CHUNK_SIZE * TILE_SIZE));
-        int chunkY = (int) (py / (CHUNK_SIZE * TILE_SIZE));
-
-        // Check immediate surrounding chunks
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dy = -2; dy <= 2; dy++) {
-                Vector2 chunkPos = new Vector2(chunkX + dx, chunkY + dy);
-                if (!worldService.isChunkLoaded(chunkPos)) {
-                    return false;
-                }
-            }
-        }
-        return true;
     }
 
     private void updateGame(float delta) {
@@ -578,16 +619,25 @@ public class GameScreen implements Screen {
     public void resume() {
     }
 
-
-
     @Override
     public void hide() {
+        // If we're in multiplayer and the screen is being hidden (e.g., going to main menu),
+        // then do a proper cleanup and revert to singleplayer mode:
         if (multiplayerClient.isConnected()) {
+            // Gracefully disconnect from server
             multiplayerClient.disconnect();
-            // Handle disconnect properly
+
+            // Let the world service handle any leftover server references
             worldService.handleDisconnect();
         }
+
+        // Reset multiplayer mode
+        worldService.setMultiplayerMode(false);
+
+        // Stop music
         audioService.stopMenuMusic();
+
+        // Reset disconnect handling flag
         handlingDisconnect = false;
     }
 

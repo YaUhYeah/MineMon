@@ -143,6 +143,9 @@ public class MultiplayerClientImpl implements MultiplayerClient {
                 log.info("Disconnected from server: {}", connection.getRemoteAddressTCP());
                 connected = false;
 
+                if (!worldService.isMultiplayerMode()) {
+                    return;
+                }
                 playerStates.clear();
                 loadedChunks.clear();
 
@@ -466,9 +469,8 @@ public class MultiplayerClientImpl implements MultiplayerClient {
 
     @Override
     public boolean isConnected() {
-        return connected;
+        return connected && worldService.isMultiplayerMode();
     }
-
     @Override
     public void sendPlayerMove(float x, float y, boolean running, boolean moving, String direction) {
         if (!connected) return;
@@ -483,6 +485,9 @@ public class MultiplayerClientImpl implements MultiplayerClient {
 
     @Override
     public void update(float delta) {
+        if (!worldService.isMultiplayerMode()) {
+            return;
+        }
         if (!checkServerConnection()) {
             return;
         }

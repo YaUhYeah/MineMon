@@ -15,6 +15,8 @@ import java.util.Map;
 public interface WorldService {
     void clearWorldData();
     void initIfNeeded();
+    ChunkData loadOrGenerateChunk(int chunkX, int chunkY);
+    void update(float delta);
     void handleDisconnect();
     WorldData getWorldData();
     boolean isMultiplayerMode();

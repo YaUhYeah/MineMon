@@ -10,7 +10,6 @@ import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -23,6 +22,7 @@ public class WorldObjectManagerImpl implements WorldObjectManager {
 
     private static final int CHUNK_SIZE = 16;
     private final boolean isServer;
+    private static final int TREE_SPACING = 4;
 
     private final Map<String, List<WorldObject>> objectsByChunk = new ConcurrentHashMap<>();
 
@@ -60,73 +60,128 @@ public class WorldObjectManagerImpl implements WorldObjectManager {
 
     @Override
     public List<WorldObject> generateObjectsForChunk(int chunkX, int chunkY, int[][] tiles, Biome biome, long seed) {
-
         List<WorldObject> objects = new CopyOnWriteArrayList<>();
-        if (biome == null) {
-            String key = chunkX + "," + chunkY;
-            objectsByChunk.put(key, objects);
+        if (biome == null || tiles == null) {
             return objects;
         }
 
-        long combinedSeed = seed * 31 + chunkX * 341873128712L + chunkY * 132897987541L;
-        Random random = new Random(combinedSeed);
-        int chunkSize = tiles.length;
+        long chunkSeed = seed + chunkX * 341873128712L + chunkY * 132897987541L;
+        Random random = new Random(chunkSeed);
 
-        for (String objName : biome.getSpawnableObjects()) {
-            ObjectType type;
-            try {
-                type = ObjectType.valueOf(objName);
-            } catch (Exception e) {
-                log.warn("Unknown object type: '{}' in biome '{}'", objName, biome.getType());
-                continue;
-            }
-
-            double chance = biome.getSpawnChanceForObject(type);
-            int attempts = (int) (chance * (chunkSize * chunkSize));
-
-            for (int i = 0; i < attempts; i++) {
-                int lx = random.nextInt(chunkSize);
-                int ly = random.nextInt(chunkSize);
-
-                int tileType = tiles[lx][ly];
-                if (!biome.getAllowedTileTypes().contains(tileType)) {
+        // First pass: Generate trees with proper spacing
+        if (biome.getSpawnableObjects() != null) {
+            for (String objTypeName : biome.getSpawnableObjects()) {
+                ObjectType type;
+                try {
+                    type = ObjectType.valueOf(objTypeName);
+                } catch (IllegalArgumentException e) {
+                    log.warn("Invalid object type {} in biome {}", objTypeName, biome.getName());
                     continue;
                 }
 
-                if (canPlaceObject(objects, chunkX, chunkY, lx, ly, type)) {
-                    int worldX = chunkX * CHUNK_SIZE + lx;
-                    int worldY = chunkY * CHUNK_SIZE + ly;
-
-                    WorldObject obj = new WorldObject(worldX, worldY, type, type.isCollidable());
-                    objects.add(obj);
+                // Special handling for trees
+                if (isTreeType(type)) {
+                    generateTreesWithSpacing(objects, type, biome, tiles, random, chunkX, chunkY);
+                } else {
+                    // Handle other objects normally
+                    generateRegularObjects(objects, type, biome, tiles, random, chunkX, chunkY);
                 }
             }
         }
 
         String key = chunkX + "," + chunkY;
         objectsByChunk.put(key, objects);
-        log.info("Generated {} objects for chunk {},{} using biome '{}'", objects.size(), chunkX, chunkY, biome.getType());
         return objects;
     }
 
-    private boolean canPlaceObject(List<WorldObject> currentObjects, int chunkX, int chunkY, int lx, int ly, ObjectType newType) {
-        int worldX = chunkX * CHUNK_SIZE + lx;
-        int worldY = chunkY * CHUNK_SIZE + ly;
+    private void generateTreesWithSpacing(List<WorldObject> objects, ObjectType type,
+                                          Biome biome, int[][] tiles, Random random,
+                                          int chunkX, int chunkY) {
+        double spawnChance = biome.getSpawnChanceForObject(type);
+        int attempts = (int)(spawnChance * (CHUNK_SIZE * CHUNK_SIZE));
 
-        int minDistance = 3;
-        if (newType.name().contains("TREE")) {
-            for (WorldObject obj : currentObjects) {
-                if (obj.getType().name().contains("TREE")) {
-                    int dx = obj.getTileX() - worldX;
-                    int dy = obj.getTileY() - worldY;
-                    if (dx * dx + dy * dy < minDistance * minDistance) {
-                        return false;
-                    }
+        for (int i = 0; i < attempts; i++) {
+            int localX = random.nextInt(CHUNK_SIZE);
+            int localY = random.nextInt(CHUNK_SIZE);
+            int worldX = chunkX * CHUNK_SIZE + localX;
+            int worldY = chunkY * CHUNK_SIZE + localY;
+
+            // Check tile type
+            if (!biome.getAllowedTileTypes().contains(tiles[localX][localY])) {
+                continue;
+            }
+
+            // Enhanced spacing check for trees
+            if (hasSpaceForTree(objects, worldX, worldY)) {
+                WorldObject tree = new WorldObject(worldX, worldY, type, true);
+                objects.add(tree);
+            }
+        }
+    }
+    private void generateRegularObjects(List<WorldObject> objects, ObjectType type,
+                                        Biome biome, int[][] tiles, Random random,
+                                        int chunkX, int chunkY) {
+        double spawnChance = biome.getSpawnChanceForObject(type);
+        int attempts = (int)(spawnChance * (CHUNK_SIZE * CHUNK_SIZE));
+
+        for (int i = 0; i < attempts; i++) {
+            int localX = random.nextInt(CHUNK_SIZE);
+            int localY = random.nextInt(CHUNK_SIZE);
+
+            if (!biome.getAllowedTileTypes().contains(tiles[localX][localY])) {
+                continue;
+            }
+
+            int worldX = chunkX * CHUNK_SIZE + localX;
+            int worldY = chunkY * CHUNK_SIZE + localY;
+
+            if (hasSpaceForObject(objects, worldX, worldY, type)) {
+                WorldObject obj = new WorldObject(worldX, worldY, type, type.isCollidable());
+                objects.add(obj);
+            }
+        }
+    }
+
+    private boolean hasSpaceForObject(List<WorldObject> objects, int x, int y, ObjectType type) {
+        int minSpacing = type.name().contains("TREE") ? TREE_SPACING : 2;
+
+        for (WorldObject obj : objects) {
+            int dx = Math.abs(obj.getTileX() - x);
+            int dy = Math.abs(obj.getTileY() - y);
+
+            if (dx < minSpacing && dy < minSpacing) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isTreeType(ObjectType type) {
+        return type == ObjectType.TREE_0 ||
+            type == ObjectType.TREE_1 ||
+            type == ObjectType.SNOW_TREE ||
+            type == ObjectType.HAUNTED_TREE ||
+            type == ObjectType.RUINS_TREE ||
+            type == ObjectType.APRICORN_TREE ||
+            type == ObjectType.RAIN_TREE ||
+            type == ObjectType.CHERRY_TREE;
+    }
+    private boolean hasSpaceForTree(List<WorldObject> objects, int x, int y) {
+        // Check a larger area for trees to prevent overlapping
+        for (WorldObject obj : objects) {
+            if (isTreeType(obj.getType())) {
+                int dx = Math.abs(obj.getTileX() - x);
+                int dy = Math.abs(obj.getTileY() - y);
+
+                // Enforce minimum spacing between trees
+                if (dx < TREE_SPACING && dy < TREE_SPACING) {
+                    return false;
                 }
             }
         }
         return true;
     }
+
 
     @Override
     public List<WorldObject> getObjectsForChunk(int chunkX, int chunkY) {

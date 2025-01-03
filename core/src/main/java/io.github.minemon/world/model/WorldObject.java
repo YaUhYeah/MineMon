@@ -20,7 +20,7 @@ public class WorldObject {
     private float spawnTime;
     private boolean collidable;
 
-    
+
     private float timeSinceVisible;
 
     public WorldObject() {
@@ -37,13 +37,14 @@ public class WorldObject {
         this.timeSinceVisible = 0f;
     }
 
-    
+
 
     public float getFadeAlpha() {
         return Math.min(timeSinceVisible, 1f);
     }
 
-    
+
+
 
     public Rectangle getCollisionBox() {
         if (!collidable) {
@@ -55,16 +56,18 @@ public class WorldObject {
 
         if (isTreeType(this.type)) {
             float baseX = pixelX - 32;
-            return new Rectangle(baseX, pixelY, this.type.getWidthInTiles() * 32, 32);
+            return new Rectangle(baseX, pixelY, 64, 64);
         } else {
+            // Other objects use their normal dimensions
             return new Rectangle(
-                    pixelX,
-                    pixelY,
-                    this.type.getWidthInTiles() * 32,
-                    this.type.getHeightInTiles() * 32
+                pixelX,
+                pixelY,
+                this.type.getWidthInTiles() * 32,
+                this.type.getHeightInTiles() * 32
             );
         }
     }
+
 
 
     private boolean isTreeType(ObjectType t) {

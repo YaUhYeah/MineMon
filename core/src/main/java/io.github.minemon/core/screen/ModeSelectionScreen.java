@@ -14,7 +14,11 @@ import io.github.minemon.audio.service.AudioService;
 import io.github.minemon.core.service.BackgroundService;
 import io.github.minemon.core.service.ScreenManager;
 import io.github.minemon.core.service.SettingsService;
+import io.github.minemon.multiplayer.service.MultiplayerClient;
+import io.github.minemon.world.service.WorldService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 
@@ -25,7 +29,12 @@ public class ModeSelectionScreen implements Screen {
     private final ScreenManager screenManager;
     private final SettingsService settingsService;
     private final BackgroundService backgroundAnimation;
-
+    @Autowired
+    @Lazy
+    private MultiplayerClient multiplayerClient;
+    @Autowired
+    @Lazy
+    private WorldService worldService;
     private Stage stage;
     private Skin skin;
     private Window settingsWindow;
@@ -73,10 +82,15 @@ public class ModeSelectionScreen implements Screen {
         mainTable.add(settingsButton).width(300).pad(10).row();
         mainTable.add(exitButton).width(300).pad(10).row();
 
-
         singlePlayerButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
+                if (multiplayerClient.isConnected()) {
+                    multiplayerClient.disconnect();
+                }
+                worldService.handleDisconnect();
+                worldService.setMultiplayerMode(false);
+
                 screenManager.showScreen(WorldSelectionScreen.class);
             }
         });

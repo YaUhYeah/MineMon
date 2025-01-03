@@ -16,11 +16,13 @@ import com.badlogic.gdx.utils.Scaling;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.minemon.audio.service.AudioService;
 import io.github.minemon.core.service.ScreenManager;
+import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.world.model.WorldData;
 import io.github.minemon.world.service.WorldService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.text.SimpleDateFormat;
@@ -47,6 +49,9 @@ public class WorldSelectionScreen implements Screen {
     private TextButton playButton;
     private TextButton deleteButton;
     private float fontScale;
+    @Autowired
+    @Lazy
+    private MultiplayerClient multiplayerClient;
 
     @Autowired
     public WorldSelectionScreen(AudioService audioService,
@@ -59,6 +64,10 @@ public class WorldSelectionScreen implements Screen {
 
     @Override
     public void show() {
+        worldService.setMultiplayerMode(false);
+        if (multiplayerClient != null && multiplayerClient.isConnected()) {
+            multiplayerClient.disconnect();
+        }
         audioService.playMenuMusic();
 
         stage = new Stage(new ScreenViewport());

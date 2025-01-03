@@ -4,6 +4,10 @@ package io.github.minemon.server.world;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.google.common.cache.RemovalNotification;
 import io.github.minemon.multiplayer.model.WorldObjectUpdate;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.world.biome.config.BiomeConfigurationLoader;
@@ -29,6 +33,8 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
@@ -36,17 +42,17 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements WorldService {
     private static final int TILE_SIZE = 32;
     private static final int CHUNK_SIZE = 16;
-
+    private static final int CHUNK_CACHE_SIZE = 256;
     private final WorldGenerator worldGenerator;
     private final WorldObjectManager worldObjectManager;
     private final TileManager tileManager;
     private final BiomeConfigurationLoader biomeLoader;
     private final BiomeService biomeService;
     private final JsonWorldDataService jsonWorldDataService;
-
     private final WorldData worldData = new WorldData();
     private final Map<String, WorldData> loadedWorlds = new ConcurrentHashMap<>();
     private final Map<String, Object> chunkLocks = new ConcurrentHashMap<>();
+    private final LoadingCache<String, ChunkData> chunkCache;
     private boolean initialized = false;
     @Value("${world.defaultName:defaultWorld}")
     private String defaultWorldName;
@@ -65,6 +71,74 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         this.tileManager = tileManager;
         this.biomeLoader = biomeLoader;
         this.jsonWorldDataService = jsonWorldDataService;
+        this.chunkCache = CacheBuilder.newBuilder()
+            .maximumSize(CHUNK_CACHE_SIZE)
+            .expireAfterAccess(5, TimeUnit.MINUTES)
+            .removalListener((RemovalNotification<String, ChunkData> notification) -> {
+                // Save chunk when evicted from cache
+                try {
+                    if (notification.getValue() != null) {
+                        jsonWorldDataService.saveChunk("serverWorld", notification.getValue());
+                    }
+                } catch (IOException e) {
+                    log.error("Failed to save evicted chunk: {}", e.getMessage());
+                }
+            })
+            .build(new CacheLoader<>() {
+                @Override
+                public ChunkData load(String key) throws Exception {
+                    String[] coords = key.split(",");
+                    int chunkX = Integer.parseInt(coords[0]);
+                    int chunkY = Integer.parseInt(coords[1]);
+                    return Objects.requireNonNull(loadOrGenerateChunkInternal(chunkX, chunkY));
+                }
+            });
+    }
+
+    private ChunkData loadOrGenerateChunkInternal(int chunkX, int chunkY) {
+        try {
+            // Try loading from storage first
+            ChunkData loaded = jsonWorldDataService.loadChunk("serverWorld", chunkX, chunkY);
+            if (loaded != null) {
+                return loaded;
+            }
+
+            // Generate new chunk if not found
+            int[][] tiles = worldGenerator.generateChunk(chunkX, chunkY);
+            ChunkData newChunk = new ChunkData();
+            newChunk.setChunkX(chunkX);
+            newChunk.setChunkY(chunkY);
+            newChunk.setTiles(tiles);
+
+            // Generate objects for chunk
+            Biome biome = worldGenerator.getBiomeForChunk(chunkX, chunkY);
+            List<WorldObject> objects = worldObjectManager.generateObjectsForChunk(
+                chunkX, chunkY, tiles, biome, getWorldData().getSeed());
+            newChunk.setObjects(objects);
+
+            // Save new chunk
+            jsonWorldDataService.saveChunk("serverWorld", newChunk);
+            return newChunk;
+
+        } catch (Exception e) {
+            log.error("Error loading/generating chunk {},{}: {}", chunkX, chunkY, e.getMessage());
+            return null;
+        }
+    }
+
+    public ChunkData loadOrGenerateChunk(int chunkX, int chunkY) {
+        String key = chunkX + "," + chunkY;
+        try {
+            return chunkCache.get(key);
+        } catch (ExecutionException e) {
+            log.error("Failed to load chunk {}: {}", key, e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
+    public void update(float delta) {
+
     }
 
     @Override
@@ -193,68 +267,6 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             log.info("Loaded world data for '{}' from JSON (server)", worldName);
         } catch (IOException e) {
             log.warn("World '{}' does not exist in JSON or failed to load: {}", worldName, e.getMessage());
-        }
-    }
-
-    public ChunkData loadOrGenerateChunk(int chunkX, int chunkY) {
-        String key = chunkX + "," + chunkY;
-
-        // Get or create chunk lock
-        Object chunkLock = chunkLocks.computeIfAbsent(key, k -> new Object());
-
-        synchronized (chunkLock) {
-            try {
-                // Try to get existing chunk first
-                ChunkData chunkData = worldData.getChunks().get(key);
-                if (chunkData != null) {
-                    return chunkData;
-                }
-
-                // Try to load from storage
-                try {
-                    ChunkData loaded = jsonWorldDataService.loadChunk("serverWorld", chunkX, chunkY);
-                    if (loaded != null) {
-                        worldObjectManager.loadObjectsForChunk(chunkX, chunkY, loaded.getObjects());
-                        worldData.getChunks().put(key, loaded);
-                        return loaded;
-                    }
-                } catch (IOException e) {
-                    log.warn("Could not load chunk {}: {}", key, e.getMessage());
-                }
-
-                // Generate new chunk
-                int[][] tiles = worldGenerator.generateChunk(chunkX, chunkY);
-                if (tiles == null) {
-                    log.error("Failed to generate tiles for chunk {}", key);
-                    return null;
-                }
-
-                ChunkData newChunk = new ChunkData();
-                newChunk.setChunkX(chunkX);
-                newChunk.setChunkY(chunkY);
-                newChunk.setTiles(tiles);
-
-                // Generate objects
-                Biome biome = worldGenerator.getBiomeForChunk(chunkX, chunkY);
-                List<WorldObject> objects = worldObjectManager.generateObjectsForChunk(
-                    chunkX, chunkY, tiles, biome, worldData.getSeed());
-                newChunk.setObjects(objects);
-
-                // Save to memory and disk
-                worldData.getChunks().put(key, newChunk);
-                try {
-                    jsonWorldDataService.saveChunk("serverWorld", newChunk);
-                    log.info("Generated and saved new chunk {} with {} objects",
-                        key, objects.size());
-                } catch (IOException e) {
-                    log.error("Failed to save generated chunk {}: {}", key, e.getMessage());
-                }
-
-                return newChunk;
-            } catch (Exception e) {
-                log.error("Error generating chunk {}: {}", key, e.getMessage(), e);
-                return null;
-            }
         }
     }
 
