@@ -2,6 +2,7 @@ package io.github.minemon;
 
 import com.esotericsoftware.kryo.Kryo;
 import io.github.minemon.chat.model.ChatMessage;
+import io.github.minemon.inventory.model.InventorySlot;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.utils.UUIDSerializer;
 import io.github.minemon.world.model.WorldObject;
@@ -41,6 +42,10 @@ public final class NetworkProtocol {
 
         kryo.register(List.class);
         kryo.register(Set.class);
+        kryo.register(InventorySlot.class);
+        kryo.register(InventoryUpdate.class);
+        kryo.register(InventoryAction.class);
+        kryo.register(InventoryActionType.class);
 
         kryo.register(LoginRequest.class);
         kryo.register(LoginResponse.class);
@@ -57,12 +62,20 @@ public final class NetworkProtocol {
         kryo.setReferences(false);
     }
 
+    public enum InventoryActionType {
+        ADD_ITEM,
+        REMOVE_ITEM,
+        MOVE_ITEM,
+        SYNC_REQUEST
+    }
+
     @Data
     public static class LoginRequest {
         private String username;
         private String password;
         private long timestamp;
     }
+
     @Data
     public static class CreateUserRequest {
         private String username;
@@ -74,11 +87,13 @@ public final class NetworkProtocol {
         private int chunkX;
         private int chunkY;
     }
+
     @Data
     public static class CreateUserResponse {
         private boolean success;
         private String message;
     }
+
     @Data
     public static class ServerShutdownNotice {
         private String message;
@@ -90,6 +105,22 @@ public final class NetworkProtocol {
             ERROR
         }
     }
+
+    @Data
+    public static class InventoryUpdate {
+        private String username;
+        private String serializedInventory;
+    }
+
+    @Data
+    public static class InventoryAction {
+        private String username;
+        private InventoryActionType type;
+        private String itemId;
+        private int slotIndex;
+        private int count;
+    }
+
     @Data
     public static class LoginResponse {
         private boolean success;
@@ -98,6 +129,7 @@ public final class NetworkProtocol {
         private int x;
         private int y;
         private long timestamp;
+        private String inventoryData;
     }
 
     @Data

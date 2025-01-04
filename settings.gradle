@@ -1,2 +1,8 @@
+pluginManagement {
+  repositories {
+    gradlePluginPortal()
+    google()
+    mavenCentral()
+  }
+}
 include ':lwjgl3', ':core', ':server', ':android', ':html', ':ios'
-

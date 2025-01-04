@@ -5,6 +5,7 @@ import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.math.Rectangle;
 import io.github.minemon.event.EventBus;
 import io.github.minemon.input.InputService;
+import io.github.minemon.inventory.service.InventoryService;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.player.config.PlayerProperties;
 import io.github.minemon.player.event.PlayerMoveEvent;
@@ -27,6 +28,7 @@ import java.util.List;
 public class PlayerServiceImpl implements PlayerService {
     public final int TILE_SIZE = 32;
 
+    private final InventoryService inventoryService;
     private final PlayerModel playerModel;
     private final PlayerAnimationService animationService;
     private final WorldService worldService;
@@ -48,10 +50,12 @@ public class PlayerServiceImpl implements PlayerService {
         PlayerAnimationService animationService,
         InputService inputService,
         PlayerProperties playerProperties,
-        WorldService worldService
+        WorldService worldService,
+        InventoryService inventoryService
     ) {
         this.playerModel = new PlayerModel(0, 0);
         this.animationService = animationService;
+        this.inventoryService = inventoryService;
         this.inputService = inputService;
         this.username = playerProperties.getUsername();
         this.walkStepDuration = playerProperties.getWalkStepDuration();
@@ -228,6 +232,10 @@ public class PlayerServiceImpl implements PlayerService {
 
         if (!playerModel.isMoving()) {
             eventBus.fireEvent(new PlayerMoveEvent(getPlayerData()));
+        }  if (worldService.isMultiplayerMode()) {
+            PlayerData pd = getPlayerData();
+            pd.setInventoryData(inventoryService.serializeInventory());
+            worldService.setPlayerData(pd);
         }
     }
 
@@ -251,22 +259,32 @@ public class PlayerServiceImpl implements PlayerService {
         batch.draw(frame, playerModel.getPosition().x, playerModel.getPosition().y);
     }
 
+
     @Override
     public PlayerData getPlayerData() {
-        float tileX = playerModel.getPosition().x / TILE_SIZE;
-        float tileY = playerModel.getPosition().y / TILE_SIZE;
-        PlayerData pd = new PlayerData(username, tileX, tileY, playerModel.getDirection());
+        PlayerData pd = new PlayerData(username,
+            playerModel.getPosition().x / TILE_SIZE,
+            playerModel.getPosition().y / TILE_SIZE,
+            playerModel.getDirection());
 
         pd.setMoving(playerModel.isMoving());
         pd.setWantsToRun(playerModel.isRunning());
 
+        // Save current inventory state
+        pd.setInventoryData(inventoryService.serializeInventory());
+
         return pd;
     }
-
     @Override
     public void setPlayerData(PlayerData data) {
         if (data.getUsername() != null && !data.getUsername().isEmpty()) {
             this.username = data.getUsername();
+        }
+        if (data.getInventoryData() != null) {
+            inventoryService.deserializeInventory(data.getInventoryData());
+            log.debug("Loaded inventory data for player {}", data.getUsername());
+        } else {
+            log.debug("No inventory data found for player {}", data.getUsername());
         }
 
         int tileX = (int) data.getX();

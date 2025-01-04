@@ -13,7 +13,9 @@ import io.github.minemon.audio.service.AudioService;
 import io.github.minemon.chat.service.ChatService;
 import io.github.minemon.chat.ui.ChatTable;
 import io.github.minemon.core.service.ScreenManager;
+import io.github.minemon.core.ui.HotbarUI;
 import io.github.minemon.input.InputService;
+import io.github.minemon.inventory.service.impl.ItemTextureManager;
 import io.github.minemon.multiplayer.model.PlayerSyncData;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.multiplayer.service.impl.ClientConnectionManager;
@@ -39,7 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 @Slf4j
 public class GameScreen implements Screen {
-    private static final int CHUNK_SIZE = 16;
+    private static final long CHUNK_UPDATE_INTERVAL = 250; // ms
     private final float TARGET_VIEWPORT_WIDTH_TILES = 24f;
     private final int TILE_SIZE = 32;
     private final PlayerService playerService;
@@ -54,6 +56,8 @@ public class GameScreen implements Screen {
     private final MultiplayerClient multiplayerClient;
     private final PlayerAnimationService animationService;
     private final Map<String, RemotePlayerAnimator> remotePlayerAnimators = new ConcurrentHashMap<>();
+    @Autowired
+    private InventoryScreen inventoryScreen;
     private boolean handlingDisconnect = false;
     private OrthographicCamera camera;
     private SpriteBatch batch;
@@ -73,7 +77,15 @@ public class GameScreen implements Screen {
     private InputMultiplexer multiplexer;
     private boolean isActuallyMultiplayer = false;
     @Autowired
+    @Lazy
+    private ItemTextureManager itemTextureManager;
+    @Autowired
     private ChunkLoadingManager chunkLoadingManager;
+    private boolean chunksLoading = false;
+    private long lastChunkUpdate = 0;
+    @Autowired
+    @Lazy
+    private HotbarUI hotbarUI;
 
     @Autowired
     public GameScreen(PlayerService playerService,
@@ -128,6 +140,8 @@ public class GameScreen implements Screen {
             worldService.getWorldData().getWorldName(),
             worldService.getWorldData().getSeed());
 
+        inventoryScreen.init();
+        itemTextureManager.initialize(new TextureAtlas(Gdx.files.internal("atlas/items-gfx-atlas.atlas")));
         // Ensure the world is initialized
         if (worldService.isMultiplayerMode() &&
             worldService.getWorldData().getWorldName() == null) {
@@ -160,6 +174,12 @@ public class GameScreen implements Screen {
         batch = new SpriteBatch();
         font = new BitmapFont();
 
+        multiplexer = new InputMultiplexer();
+        multiplexer.addProcessor(hotbarUI.getStage());
+        multiplexer.addProcessor(hudStage);
+        multiplexer.addProcessor(inputService);
+
+        Gdx.input.setInputProcessor(multiplexer);
         audioService.playMenuMusic();
         initializeUI();
         initializePlayerPosition();
@@ -260,6 +280,7 @@ public class GameScreen implements Screen {
             multiplexer.removeProcessor(pauseStage);
         }
     }
+
     private void updateChunkLoading() {
         long now = System.currentTimeMillis();
         if (now - lastChunkUpdate > CHUNK_UPDATE_INTERVAL) {
@@ -278,10 +299,6 @@ public class GameScreen implements Screen {
             chunkLoadingManager.update();
         }
     }
-
-    private boolean chunksLoading = false;
-    private long lastChunkUpdate = 0;
-    private static final long CHUNK_UPDATE_INTERVAL = 250; // ms
 
     @Override
     public void render(float delta) {
@@ -361,7 +378,7 @@ public class GameScreen implements Screen {
         camera.update();
 
         // Ensure player service has correct position
-        playerService.setPosition((int)(boundedX), (int)(boundedY));
+        playerService.setPosition((int) (boundedX), (int) (boundedY));
 
         // Pre-load chunks around new position
         chunkLoadingManager.preloadChunksAroundPosition(boundedX, boundedY);
@@ -379,7 +396,7 @@ public class GameScreen implements Screen {
         PlayerData player = playerService.getPlayerData();
         player.setX(x);
         player.setY(y);
-        playerService.setPosition((int)x, (int)y);
+        playerService.setPosition((int) x, (int) y);
 
         // Update camera
         float pixelX = x * TILE_SIZE;
@@ -415,6 +432,8 @@ public class GameScreen implements Screen {
 
         pauseStage.act(delta);
         hudStage.act(delta);
+        hotbarUI.update();
+        hotbarUI.render();
         audioService.update(delta);
     }
 
@@ -486,12 +505,14 @@ public class GameScreen implements Screen {
         float dy = Math.abs(currentY - lastY);
 
         return dx > 0.001f || dy > 0.001f;
-    }private void renderGame(float delta) {
+    }
+
+    private void renderGame(float delta) {
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
         // Draw world and object bases
-        worldRenderer.render(camera,delta);
+        worldRenderer.render(camera, delta);
 
         // Draw local player
         batch.setProjectionMatrix(camera.combined);
@@ -502,8 +523,9 @@ public class GameScreen implements Screen {
         renderRemotePlayers(batch, delta);
         batch.end();
 
-        // Draw tree tops on top of players
         worldRenderer.renderTreeTops(delta);
+        inventoryScreen.render(delta);
+        // Draw tree tops on top of players
 
         // Draw UI elements last
         if (paused) {
@@ -596,6 +618,7 @@ public class GameScreen implements Screen {
         if (chatTable != null) {
             chatTable.setPosition(10, height - 210);
         }
+        hotbarUI.resize(width, height);
 
         if (pauseOverlay != null && pauseOverlay.isVisible()) {
             Window pauseWindow = (Window) pauseOverlay.getUserObject();
@@ -663,8 +686,9 @@ public class GameScreen implements Screen {
             multiplayerClient.disconnect();
             log.info("Disconnected from server during screen disposal");
         }
+        hotbarUI.dispose();
 
-        // Dispose resources
+        inventoryScreen.dispose();
         batch.dispose();
         font.dispose();
         pauseStage.dispose();

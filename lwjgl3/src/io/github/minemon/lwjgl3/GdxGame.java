@@ -6,6 +6,7 @@ import io.github.minemon.core.screen.ModeSelectionScreen;
 import io.github.minemon.core.service.ScreenManager;
 import io.github.minemon.core.service.SettingsService;
 import io.github.minemon.core.service.UiService;
+import io.github.minemon.core.ui.HotbarUI;
 import io.github.minemon.player.service.PlayerAnimationService;
 import io.github.minemon.world.biome.service.BiomeService;
 import io.github.minemon.world.model.WorldRenderer;
@@ -47,6 +48,7 @@ public class GdxGame extends Game {
         ObjectTextureManager objectTextureManager =
             io.github.minemon.lwjgl3.PokemeetupApplication.getSpringContext().getBean(ObjectTextureManager.class);
         objectTextureManager.initializeIfNeeded();
+
 
         WorldRenderer worldRenderer =
             io.github.minemon.lwjgl3.PokemeetupApplication.getSpringContext().getBean(WorldRenderer.class);

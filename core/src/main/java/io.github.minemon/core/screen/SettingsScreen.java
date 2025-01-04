@@ -88,6 +88,7 @@ public class SettingsScreen implements Screen {
         addKeyBinding(content, "Move Left", "LEFT");
         addKeyBinding(content, "Move Right", "RIGHT");
         addKeyBinding(content, "Run", "RUN");
+        addKeyBinding(content, "Inventory", "INVENTORY");
 
 
         TextButton doneButton = new TextButton("Done", skin);
@@ -150,8 +151,11 @@ public class SettingsScreen implements Screen {
 
     private void addKeyBinding(Table table, String label, String binding) {
         table.add(label).left();
+
         TextButton bindButton = new TextButton(
-            Input.Keys.toString(settingsService.getKeyBindings().get(binding)),
+            binding.equals("INVENTORY")
+                ? Input.Keys.toString(settingsService.getKeyBindings().get("INVENTORY"))
+                : Input.Keys.toString(settingsService.getKeyBindings().get(binding)),
             skin
         );
 
@@ -171,7 +175,11 @@ public class SettingsScreen implements Screen {
             @Override
             public boolean keyDown(InputEvent event, int keycode) {
                 if (keycode != Input.Keys.ESCAPE) {
-                    settingsService.setKeyBinding(binding, keycode);
+                    if (binding.equals("INVENTORY")) {
+                        settingsService.setKeyBinding("INVENTORY", keycode);
+                    } else {
+                        settingsService.setKeyBinding(binding, keycode);
+                    }
                     button.setText(Input.Keys.toString(keycode));
                 }
                 stage.removeListener(this);

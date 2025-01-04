@@ -35,6 +35,7 @@ public class ChunkLoadingManager {
     @Autowired
     @Lazy
     private MultiplayerClient multiplayerClient;
+
     public ChunkLoadingManager() {
         cleanupService.scheduleWithFixedDelay(this::cleanup, 30, 30, TimeUnit.SECONDS);
     }
@@ -55,24 +56,23 @@ public class ChunkLoadingManager {
 
     public void queueChunkRequest(int x, int y, boolean highPriority) {
         Vector2 pos = new Vector2(x, y);
+        if (worldService.isMultiplayerMode()) {
+            // Skip if chunk is already being handled
+            if (worldService.isChunkLoaded(pos) || activeRequests.containsKey(pos)) {
+                return;
+            }
 
-        // Skip if chunk is already being handled
-        if (worldService.isChunkLoaded(pos) || activeRequests.containsKey(pos)) {
-            return;
+            // Reset retry count for new requests
+            retryCount.remove(pos);
+            failedChunks.remove(pos);
+
+            requestQueue.offer(new ChunkRequest(
+                x, y,
+                highPriority ? 0 : 1,
+                System.currentTimeMillis(),
+                0
+            ));
         }
-
-        // Reset retry count for new requests
-        retryCount.remove(pos);
-        failedChunks.remove(pos);
-
-        requestQueue.offer(new ChunkRequest(
-            x, y,
-            highPriority ? 0 : 1,
-            System.currentTimeMillis(),
-            0
-        ));
-
-        log.debug("Queued chunk request for ({},{}), priority={}", x, y, highPriority ? "high" : "normal");
     }
 
     public void markChunkComplete(int x, int y) {

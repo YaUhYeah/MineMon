@@ -1,6 +1,7 @@
 package io.github.minemon.player.config;
 
 import io.github.minemon.input.InputService;
+import io.github.minemon.inventory.service.InventoryService;
 import io.github.minemon.player.service.PlayerAnimationService;
 import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.player.service.impl.PlayerServiceImpl;
@@ -31,11 +32,11 @@ public class PlayerConfig {
 
     }
 
-    
+
     @Bean
     public PlayerService playerService(
-            PlayerAnimationService animationService
+            PlayerAnimationService animationService, InventoryService inventoryService
     ) {
-        return new PlayerServiceImpl(animationService, inputService, playerProperties, worldService);
+        return new PlayerServiceImpl(animationService, inputService, playerProperties, worldService,inventoryService);
     }
 }

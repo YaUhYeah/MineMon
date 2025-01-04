@@ -5,6 +5,7 @@ buildscript {
     gradlePluginPortal()
     mavenLocal()
     google()
+    maven { url 'https://plugins.gradle.org/m2/' }
     maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
     maven { url 'https://s01.oss.sonatype.org/content/repositories/snapshots/' }
   }
@@ -45,7 +46,6 @@ configure(subprojects - project(':android')) {
     inputs.dir("${project.rootDir}/assets/")
     File assetsFolder = new File("${project.rootDir}/assets/")
     File assetsFile = new File(assetsFolder, "assets.txt")
-    assetsFile.delete()
 
     fileTree(assetsFolder).collect { assetsFolder.relativePath(it) }.sort().each {
       assetsFile.append(it + "\n")

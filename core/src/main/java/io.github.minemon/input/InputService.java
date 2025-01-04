@@ -2,6 +2,7 @@ package io.github.minemon.input;
 
 import com.badlogic.gdx.InputAdapter;
 import io.github.minemon.chat.service.ChatService;
+import io.github.minemon.core.screen.InventoryScreen;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.player.model.PlayerDirection;
@@ -30,6 +31,9 @@ public class InputService extends InputAdapter {
     @Autowired
     @Lazy
     private PlayerService playerService;
+    @Autowired
+    @Lazy
+    private InventoryScreen inventoryScreen;
 
     /**
      * Returns the current direction, favoring the last pressed direction if multiple are pressed.
@@ -66,6 +70,10 @@ public class InputService extends InputAdapter {
     public boolean keyDown(int keycode) {
         if (chatService.isActive()) {
             return false;
+        }
+        if (keycode == inputConfig.getActionKey("INVENTORY")) {
+            inventoryScreen.toggleVisibility();
+            return true;
         }
         PlayerDirection dir = inputConfig.getDirectionForKey(keycode);
         if (dir != null) {
