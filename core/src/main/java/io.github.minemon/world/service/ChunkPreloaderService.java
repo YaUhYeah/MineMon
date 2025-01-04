@@ -29,7 +29,9 @@ public class ChunkPreloaderService {
     private final Set<Vector2> preloadedChunks = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Set<Vector2> failedRequests = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Queue<Vector2> urgentChunkQueue = new LinkedList<>();
-
+    @Autowired
+    @Lazy
+    private ChunkLoadingManager chunkLoadingManager;
     @Autowired
     @Lazy
     private MultiplayerClient client;
@@ -62,77 +64,15 @@ public class ChunkPreloaderService {
         }
     }
 
-    public void preloadAround(float playerX, float playerY) {
-        int tileX = (int) (playerX / 32);
-        int tileY = (int) (playerY / 32);
-        int playerChunkX = tileX / 16;
-        int playerChunkY = tileY / 16;
-
-        executor.submit(() -> {
-            try {
-                // First handle urgent chunks (immediately visible)
-                for (int dx = -URGENT_RADIUS; dx <= URGENT_RADIUS; dx++) {
-                    for (int dy = -URGENT_RADIUS; dy <= URGENT_RADIUS; dy++) {
-                        Vector2 chunkPos = new Vector2(playerChunkX + dx, playerChunkY + dy);
-                        if (!worldService.isChunkLoaded(chunkPos)) {
-                            urgentChunkQueue.offer(chunkPos);
-                        }
-                    }
-                }
-
-                // Then handle visible chunks
-                Set<Vector2> visibleChunks = new HashSet<>();
-                for (int dx = -VISIBLE_RADIUS; dx <= VISIBLE_RADIUS; dx++) {
-                    for (int dy = -VISIBLE_RADIUS; dy <= VISIBLE_RADIUS; dy++) {
-                        Vector2 chunkPos = new Vector2(playerChunkX + dx, playerChunkY + dy);
-                        visibleChunks.add(chunkPos);
-                        if (!worldService.isChunkLoaded(chunkPos)) {
-                            requestChunk(chunkPos, false);
-                        }
-                    }
-                }
-
-                // Finally handle preload chunks
-                for (int dx = -PRELOAD_RADIUS; dx <= PRELOAD_RADIUS; dx++) {
-                    for (int dy = -PRELOAD_RADIUS; dy <= PRELOAD_RADIUS; dy++) {
-                        Vector2 chunkPos = new Vector2(playerChunkX + dx, playerChunkY + dy);
-                        if (!visibleChunks.contains(chunkPos) && !worldService.isChunkLoaded(chunkPos)) {
-                            requestChunk(chunkPos, false);
-                        }
-                    }
-                }
-
-                // Retry failed requests
-                retryFailedRequests();
-
-            } catch (Exception e) {
-                log.error("Error during chunk preloading: {}", e.getMessage(), e);
-            }
-        });
-    }
-
     private void requestChunk(Vector2 chunkPos, boolean urgent) {
-        long now = System.currentTimeMillis();
-        Long lastRequest = chunkRequestTimes.get(chunkPos);
-        long timeout = urgent ? URGENT_REQUEST_TIMEOUT : CHUNK_REQUEST_TIMEOUT;
-
-        if (lastRequest != null && now - lastRequest < timeout) {
-            return;
-        }
-
         if (worldService.isMultiplayerMode() && client != null && client.isConnected()) {
-            if (!client.isPendingChunkRequest((int)chunkPos.x, (int)chunkPos.y)) {
-                client.requestChunk((int)chunkPos.x, (int)chunkPos.y);
-                chunkRequestTimes.put(chunkPos, now);
-                if (urgent) {
-                    failedRequests.add(chunkPos);
-                }
-            }
+            chunkLoadingManager.queueChunkRequest((int) chunkPos.x, (int) chunkPos.y, urgent);
         } else {
+            // Single-player direct load/generate
             worldService.loadChunk(chunkPos);
-            preloadedChunks.add(chunkPos);
         }
     }
+
 
     private void retryFailedRequests() {
         long now = System.currentTimeMillis();

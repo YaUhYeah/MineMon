@@ -1,4 +1,4 @@
-package main.java.io.github.minemon.server.config;
+package io.github.minemon.server.config;
 
 import io.github.minemon.world.service.WorldObjectManager;
 import io.github.minemon.server.world.ServerWorldObjectManagerImpl;

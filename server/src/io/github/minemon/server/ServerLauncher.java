@@ -5,8 +5,11 @@ import io.github.minemon.multiplayer.model.ServerConnectionConfig;
 import io.github.minemon.multiplayer.service.ServerConnectionService;
 import io.github.minemon.plugin.PluginManager;
 import io.github.minemon.server.service.MultiplayerServer;
+import io.github.minemon.server.world.ServerWorldServiceImpl;
 import io.github.minemon.world.service.WorldService;  // <-- Assuming your world service is here
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.Banner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -17,6 +20,9 @@ import java.util.Random;
 
 @Slf4j
 public class ServerLauncher {
+
+    @Autowired
+    private ServerWorldServiceImpl worldService;
 
     public static void main(String[] args) {
 
@@ -146,5 +152,21 @@ public class ServerLauncher {
             log.error("Critical error initializing server world: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to initialize server world", e);
         }
+    }
+
+    @PostConstruct
+    public void init() {
+        // Initialize world service
+        worldService.initIfNeeded();
+
+        // Add shutdown hook for clean saves
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                worldService.shutdown();
+            } catch (Exception e) {
+                // Log but don't rethrow as we're shutting down
+                log.error("Error during shutdown save: ", e);
+            }
+        }));
     }
 }

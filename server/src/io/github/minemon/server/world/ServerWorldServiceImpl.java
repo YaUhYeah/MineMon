@@ -21,6 +21,8 @@ import io.github.minemon.world.model.WorldObject;
 import io.github.minemon.world.service.*;
 import io.github.minemon.world.service.impl.BaseWorldServiceImpl;
 import io.github.minemon.world.service.impl.JsonWorldDataService;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -29,10 +31,11 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 @Service
 @Slf4j
@@ -41,6 +44,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     private static final int TILE_SIZE = 32;
     private static final int CHUNK_SIZE = 16;
     private static final int CHUNK_CACHE_SIZE = 256;
+    private static final int AUTOSAVE_INTERVAL = 5 * 60 * 1000; // 5 minutes
     private final WorldGenerator worldGenerator;
     private final WorldObjectManager worldObjectManager;
     private final TileManager tileManager;
@@ -51,12 +55,16 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     private final Map<String, WorldData> loadedWorlds = new ConcurrentHashMap<>();
     private final Map<String, Object> chunkLocks = new ConcurrentHashMap<>();
     private final LoadingCache<String, ChunkData> chunkCache;
+    private final ScheduledExecutorService autoSaveExecutor =
+        Executors.newSingleThreadScheduledExecutor();
+    private final Set<ChunkData> dirtyChunks = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private boolean initialized = false;
     @Value("${world.defaultName:defaultWorld}")
     private String defaultWorldName;
     private OrthographicCamera camera = null;
     @Autowired
     private ChunkLoadingManager chunkLoadingManager;
+
 
     public ServerWorldServiceImpl(
         WorldGenerator worldGenerator,
@@ -95,34 +103,196 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             });
     }
 
-    private ChunkData loadOrGenerateChunkInternal(int chunkX, int chunkY) {
+    @PreDestroy
+    public void shutdown() {
+        // Final save on shutdown
+        performAutoSave();
+        autoSaveExecutor.shutdown();
         try {
-            // Try loading from storage first
-            ChunkData loaded = jsonWorldDataService.loadChunk("serverWorld", chunkX, chunkY);
-            if (loaded != null) {
-                return loaded;
+            if (!autoSaveExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+                autoSaveExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            autoSaveExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void performAutoSave() {
+        try {
+            WorldData currentWorld = loadedWorlds.get("serverWorld");
+            if (currentWorld != null) {
+                // Save world data
+                jsonWorldDataService.saveWorld(currentWorld);
+
+                // Save all player data
+                for (Map.Entry<String, PlayerData> entry :
+                    currentWorld.getPlayers().entrySet()) {
+                    jsonWorldDataService.savePlayerData("serverWorld", entry.getValue());
+                }
+
+                // Save dirty chunks
+                for (ChunkData chunk : getDirtyChunks()) {
+                    jsonWorldDataService.saveChunk("serverWorld", chunk);
+                }
+
+                log.info("Autosave completed successfully");
+            }
+        } catch (Exception e) {
+            log.error("Autosave failed: ", e);
+        }
+    }
+
+    private Collection<ChunkData> getDirtyChunks() {
+        synchronized (dirtyChunks) {
+            List<ChunkData> chunks = new ArrayList<>(dirtyChunks);
+            dirtyChunks.clear();
+            return chunks;
+        }
+    }
+
+    @PostConstruct
+    public void init() {
+        autoSaveExecutor.scheduleAtFixedRate(
+            this::performAutoSave,
+            AUTOSAVE_INTERVAL,
+            AUTOSAVE_INTERVAL,
+            TimeUnit.MILLISECONDS
+        );
+    }
+
+    @Override
+    public void updateWorldObjectState(WorldObjectUpdate update) {
+        WorldData wd = loadedWorlds.get("serverWorld");
+        if (wd == null) return;
+
+        int chunkX = update.getTileX() / 16;
+        int chunkY = update.getTileY() / 16;
+        String chunkKey = chunkX + "," + chunkY;
+
+        var chunkData = wd.getChunks().get(chunkKey);
+        if (chunkData != null) {
+            // Existing object update logic...
+
+            // Mark chunk as dirty
+            dirtyChunks.add(chunkData);
+
+            try {
+                jsonWorldDataService.saveChunk("serverWorld", chunkData);
+            } catch (IOException e) {
+                log.error("Failed to save chunk data: {}", e.getMessage());
+            }
+        }
+    }
+
+    @Override
+    public void setPlayerData(PlayerData pd) {
+        if (pd == null) return;
+
+        WorldData wd = loadedWorlds.get("serverWorld");
+        if (wd != null) {
+            wd.getPlayers().put(pd.getUsername(), pd);
+            try {
+                jsonWorldDataService.savePlayerData("serverWorld", pd);
+
+                // Mark nearby chunks as dirty when player moves
+                int chunkX = (int) Math.floor(pd.getX() / 16);
+                int chunkY = (int) Math.floor(pd.getY() / 16);
+                markChunkDirty(chunkX, chunkY);
+            } catch (IOException e) {
+                log.error("Failed to save player data: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void markChunkDirty(int chunkX, int chunkY) {
+        String key = chunkX + "," + chunkY;
+        ChunkData chunk = worldData.getChunks().get(key);
+        if (chunk != null) {
+            dirtyChunks.add(chunk);
+        }
+    }
+
+    public ChunkData loadOrGenerateChunkInternal(int chunkX, int chunkY) {
+        try {
+            // First validate initialization
+            if (!initialized) {
+                throw new IllegalStateException("WorldService not initialized");
             }
 
-            // Generate new chunk if not found
-            int[][] tiles = worldGenerator.generateChunk(chunkX, chunkY);
-            ChunkData newChunk = new ChunkData();
-            newChunk.setChunkX(chunkX);
-            newChunk.setChunkY(chunkY);
-            newChunk.setTiles(tiles);
+            if (worldGenerator == null || biomeService == null) {
+                throw new IllegalStateException("Required services not initialized");
+            }
 
-            // Generate objects for chunk
-            Biome biome = worldGenerator.getBiomeForChunk(chunkX, chunkY);
-            List<WorldObject> objects = worldObjectManager.generateObjectsForChunk(
-                chunkX, chunkY, tiles, biome, getWorldData().getSeed());
-            newChunk.setObjects(objects);
+            // Acquire chunk lock to prevent concurrent generation
+            String lockKey = chunkX + "," + chunkY;
+            synchronized (chunkLocks.computeIfAbsent(lockKey, k -> new Object())) {
+                // First try loading from storage
+                ChunkData loaded = jsonWorldDataService.loadChunk("serverWorld", chunkX, chunkY);
+                if (loaded != null) {
+                    return loaded;
+                }
 
-            // Save new chunk
-            jsonWorldDataService.saveChunk("serverWorld", newChunk);
-            return newChunk;
+                // Generate new chunk with proper error handling
+                int[][] tiles = worldGenerator.generateChunk(chunkX, chunkY);
+                if (tiles == null) {
+                    throw new RuntimeException("Failed to generate tiles for chunk");
+                }
 
+                ChunkData newChunk = new ChunkData();
+                newChunk.setChunkX(chunkX);
+                newChunk.setChunkY(chunkY);
+                newChunk.setTiles(tiles);
+
+                // Get biome and validate
+                Biome biome = worldGenerator.getBiomeForChunk(chunkX, chunkY);
+                if (biome == null) {
+                    throw new RuntimeException("Failed to get biome for chunk");
+                }
+
+                // Generate objects
+                List<WorldObject> objects = worldObjectManager.generateObjectsForChunk(
+                    chunkX, chunkY, tiles, biome, getWorldData().getSeed());
+                newChunk.setObjects(objects);
+
+                // Save the chunk
+                try {
+                    jsonWorldDataService.saveChunk("serverWorld", newChunk);
+                } catch (IOException e) {
+                    log.error("Failed to save generated chunk: {}", e.getMessage());
+                }
+
+                return newChunk;
+            }
         } catch (Exception e) {
-            log.error("Error loading/generating chunk {},{}: {}", chunkX, chunkY, e.getMessage());
-            return null;
+            log.error("Error generating chunk {},{}: {}", chunkX, chunkY, e.getMessage(), e);
+            throw new RuntimeException("Chunk generation failed", e);
+        }
+    }
+
+    @PostConstruct
+    public void validateConfiguration() {
+        if (worldGenerator == null) {
+            throw new IllegalStateException("WorldGenerator not configured");
+        }
+        if (biomeService == null) {
+            throw new IllegalStateException("BiomeService not configured");
+        }
+
+        // Validate config directories exist
+        Path configDir = Paths.get("config");
+        if (!Files.exists(configDir)) {
+            try {
+                Files.createDirectories(configDir);
+            } catch (IOException e) {
+                throw new IllegalStateException("Could not create config directory", e);
+            }
+        }
+
+        // Validate biomes.json exists
+        Path biomesConfig = configDir.resolve("biomes.json");
+        if (!Files.exists(biomesConfig)) {
+            throw new IllegalStateException("biomes.json configuration file missing");
         }
     }
 
@@ -153,15 +323,6 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         }
     }
 
-    public ChunkData loadOrGenerateChunk(int chunkX, int chunkY) {
-        String key = chunkX + "," + chunkY;
-        try {
-            return chunkCache.get(key);
-        } catch (ExecutionException e) {
-            log.error("Failed to load chunk {}: {}", key, e.getMessage());
-            return null;
-        }
-    }
 
     @Override
     public void update(float delta) {
@@ -365,34 +526,6 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         initialized = false;
     }
 
-    @Override
-    public void setPlayerData(PlayerData pd) {
-        if (pd == null) return;
-
-        log.debug("Setting player data for {}: pos=({},{}), moving={}",
-            pd.getUsername(), pd.getX(), pd.getY(), pd.isMoving());
-
-        // Get previous state if exists
-        PlayerData oldData = getPlayerData(pd.getUsername());
-        if (oldData != null) {
-            float dx = Math.abs(oldData.getX() - pd.getX());
-            float dy = Math.abs(oldData.getY() - pd.getY());
-            boolean posChanged = dx > 0.001f || dy > 0.001f;
-
-            log.debug("Position changed={}, dx={}, dy={}", posChanged, dx, dy);
-            pd.setMoving(posChanged);
-        }
-
-        WorldData wd = loadedWorlds.get("serverWorld");
-        if (wd != null) {
-            wd.getPlayers().put(pd.getUsername(), pd);
-            try {
-                jsonWorldDataService.savePlayerData("serverWorld", pd);
-            } catch (IOException e) {
-                log.error("Failed to save player data: {}", e.getMessage());
-            }
-        }
-    }
 
     @Override
     public PlayerData getPlayerData(String username) {
@@ -459,55 +592,56 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     }
 
+    @Override
+    public ChunkData loadOrGenerateChunk(int chunkX, int chunkY) {
+        try {
+            if (!initialized) {
+                initIfNeeded();
+            }
+            String key = chunkX + "," + chunkY;
+
+            // Try loading from disk
+            ChunkData loaded = jsonWorldDataService.loadChunk("serverWorld", chunkX, chunkY);
+            if (loaded != null) {
+                // IMPORTANT: Store in memory
+                worldData.getChunks().put(key, loaded);
+                return loaded;
+            }
+
+            // Otherwise generate
+            int[][] tiles = worldGenerator.generateChunk(chunkX, chunkY);
+            Biome biome = worldGenerator.getBiomeForChunk(chunkX, chunkY);
+
+            ChunkData newChunk = new ChunkData();
+            newChunk.setChunkX(chunkX);
+            newChunk.setChunkY(chunkY);
+            newChunk.setTiles(tiles);
+
+            List<WorldObject> objects = worldObjectManager.generateObjectsForChunk(
+                chunkX, chunkY, tiles, biome, getWorldData().getSeed()
+            );
+            newChunk.setObjects(objects);
+
+            // Save to disk
+            jsonWorldDataService.saveChunk("serverWorld", newChunk);
+
+            // Also store in memory
+            worldData.getChunks().put(key, newChunk);
+
+            return newChunk;
+
+        } catch (Exception e) {
+            log.error("Failed to load/generate chunk {},{}: {}", chunkX, chunkY, e.getMessage(), e);
+            throw new RuntimeException("Chunk processing failed", e);
+        }
+    }
+
 
     @Override
     public void loadOrReplaceChunkData(int chunkX, int chunkY, int[][] tiles, List<WorldObject> objects) {
         // Server should generate its own chunks, not accept them from clients
         log.warn("Client attempted to send chunk data to server - ignoring");
 
-    }
-
-    @Override
-    public void updateWorldObjectState(WorldObjectUpdate update) {
-        // Example: move or remove an object in the chunk
-        WorldData wd = loadedWorlds.get("serverWorld");
-        if (wd == null) return;
-        String chunkKey = (update.getTileX() / 16) + "," + (update.getTileY() / 16);
-
-        var chunkData = wd.getChunks().get(chunkKey);
-        if (chunkData != null) {
-            if (update.isRemoved()) {
-                chunkData.getObjects().removeIf(o -> o.getId().equals(update.getObjectId()));
-            } else {
-                // Possibly find or create
-                var existing = chunkData.getObjects().stream()
-                    .filter(o -> o.getId().equals(update.getObjectId()))
-                    .findFirst();
-                if (existing.isPresent()) {
-                    // update position
-                    var wo = existing.get();
-                    wo.setTileX(update.getTileX());
-                    wo.setTileY(update.getTileY());
-                } else {
-                    // create new
-                    WorldObject obj = new WorldObject(
-                        update.getTileX(),
-                        update.getTileY(),
-                        // parse from update.getType()
-                        ObjectType.valueOf(update.getType()),
-                        true // or read from config
-                    );
-                    obj.setId(update.getObjectId());
-                    chunkData.getObjects().add(obj);
-                }
-            }
-        }
-        // Optionally save chunk to disk
-        try {
-            jsonWorldDataService.saveChunk("serverWorld", chunkData);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 
     @Override

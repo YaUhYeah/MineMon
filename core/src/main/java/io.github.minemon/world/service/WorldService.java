@@ -19,7 +19,9 @@ public interface WorldService {
 
     void forceLoadChunksAt(float tileX, float tileY);
 
-    ChunkData loadOrGenerateChunk(int chunkX, int chunkY);
+    default ChunkData loadOrGenerateChunk(int chunkX, int chunkY) {
+        return null;
+    }
 
     void update(float delta);
 

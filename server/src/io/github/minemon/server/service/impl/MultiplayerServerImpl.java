@@ -14,6 +14,7 @@ import io.github.minemon.player.model.PlayerDirection;
 import io.github.minemon.server.service.MultiplayerServer;
 import io.github.minemon.server.service.MultiplayerService;
 import io.github.minemon.world.model.ChunkData;
+import io.github.minemon.world.model.WorldObject;
 import io.github.minemon.world.service.WorldService;
 import jakarta.annotation.PreDestroy;
 import lombok.AllArgsConstructor;
@@ -36,24 +37,24 @@ public class MultiplayerServerImpl implements MultiplayerServer {
 
     private static final int MAX_CONCURRENT_CHUNK_REQUESTS = 4;
     private static final long CHUNK_REQUEST_TIMEOUT = 5000; // 5 seconds
-
+    private static final long CHUNK_SEND_DELAY = 50L; // ms between batches
+    private static final int MAX_CONCURRENT_CHUNK_GEN = 8;
     private final MultiplayerService multiplayerService;
     private final EventBus eventBus;
     private final AuthService authService;
     private final Map<Integer, String> connectionUserMap = new ConcurrentHashMap<>();
     private final Map<String, Connection> activeUsers = new ConcurrentHashMap<>();
-    private final Map<ChunkKey, Long> pendingChunkRequests = new ConcurrentHashMap<>();
     private final PriorityBlockingQueue<NetworkProtocol.ChunkRequest> chunkRequestQueue = new PriorityBlockingQueue<>();
     private final ExecutorService chunkExecutor;
-
+    private final Map<String, Map<ChunkKey, Long>> clientChunkCache = new ConcurrentHashMap<>();
+    private final ExecutorService chunkGenExecutor = Executors.newFixedThreadPool(MAX_CONCURRENT_CHUNK_GEN);
+    private final Map<ChunkKey, Set<Connection>> pendingChunkRequests = new ConcurrentHashMap<>();
+    private final Object chunkLock = new Object();
     @Getter
     private Server server;
     private volatile boolean running = false;
-
     @Autowired
     private WorldService worldService;
-    private final Map<String, Map<ChunkKey, Long>> clientChunkCache = new ConcurrentHashMap<>();
-
 
     public MultiplayerServerImpl(MultiplayerService multiplayerService,
                                  EventBus eventBus,
@@ -178,6 +179,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         } else if (object instanceof NetworkProtocol.PlayerMoveRequest moveReq) {
             handlePlayerMove(connection, moveReq);
         } else if (object instanceof NetworkProtocol.ChunkRequest chunkReq) {
+            log.info("Server received ChunkRequest for {},{}", chunkReq.getChunkX(), chunkReq.getChunkY());
             handleChunkRequest(connection, chunkReq);
         } else if (object instanceof io.github.minemon.chat.model.ChatMessage chatMsg) {
             handleChatMessage(connection, chatMsg);
@@ -260,79 +262,134 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         broadcast(update);
     }
 
-
     private void handleChunkRequest(Connection connection, NetworkProtocol.ChunkRequest req) {
         ChunkKey key = new ChunkKey(req.getChunkX(), req.getChunkY());
 
-        // Check if request is already pending
-        if (pendingChunkRequests.containsKey(key)) {
-            if (System.currentTimeMillis() - pendingChunkRequests.get(key) > CHUNK_REQUEST_TIMEOUT) {
-                // Request timed out, remove it
-                pendingChunkRequests.remove(key);
-                log.warn("Chunk request timed out for {},{}", req.getChunkX(), req.getChunkY());
-            } else {
-                // Request still in progress
-                return;
+        synchronized (chunkLock) {
+            // Add this connection to pending requests for this chunk
+            pendingChunkRequests.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet())
+                .add(connection);
+
+            // Submit chunk generation task if not already in progress
+            if (pendingChunkRequests.get(key).size() == 1) {
+                chunkGenExecutor.submit(() -> {
+                    try {
+                        // Generate or load chunk
+                        ChunkData chunk = worldService.loadOrGenerateChunk(req.getChunkX(), req.getChunkY());
+                        if (chunk == null) {
+                            log.error("Failed to generate chunk {},{}", req.getChunkX(), req.getChunkY());
+                            return;
+                        }
+
+                        // Send chunk to all waiting connections
+                        synchronized (chunkLock) {
+                            Set<Connection> waitingConnections = pendingChunkRequests.get(key);
+                            if (waitingConnections != null) {
+                                NetworkProtocol.ChunkData response = new NetworkProtocol.ChunkData();
+                                response.setChunkX(chunk.getChunkX());
+                                response.setChunkY(chunk.getChunkY());
+                                response.setTiles(chunk.getTiles());
+                                response.setObjects(chunk.getObjects());
+
+                                for (Connection conn : waitingConnections) {
+                                    conn.sendTCP(response);
+
+                                    // Send acknowledgment
+                                    NetworkProtocol.ChunkRequestAck ack = new NetworkProtocol.ChunkRequestAck();
+                                    ack.setChunkX(req.getChunkX());
+                                    ack.setChunkY(req.getChunkY());
+                                    conn.sendTCP(ack);
+                                }
+                                pendingChunkRequests.remove(key);
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.error("Error processing chunk request {},{}: {}",
+                            req.getChunkX(), req.getChunkY(), e.getMessage(), e);
+                    }
+                });
+            }
+        }
+    }
+
+    @PreDestroy
+    public void destroy() {
+        chunkGenExecutor.shutdown();
+        try {
+            if (!chunkGenExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                chunkGenExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            chunkGenExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        stopServer();
+    }
+
+    private boolean isLargeChunk(ChunkData chunk) {
+        // Check if chunk data size would exceed safe network packet size
+        int estimatedSize = estimateChunkSize(chunk);
+        return false; // 32KB threshold
+    }
+
+    private int estimateChunkSize(ChunkData chunk) {
+        // Base size for chunk metadata
+        int size = 16; // Basic overhead
+
+        // Tiles size (16x16 grid of ints)
+        if (chunk.getTiles() != null) {
+            size += 16 * 16 * 4; // Each int is 4 bytes
+        }
+
+        // Objects size estimation
+        if (chunk.getObjects() != null) {
+            for (WorldObject obj : chunk.getObjects()) {
+                // Base object overhead
+                size += 32; // Rough estimate for object metadata
+
+                // Object ID (UUID string)
+                if (obj.getId() != null) {
+                    size += 36; // UUID string length
+                }
+
+                // Type name
+                if (obj.getType() != null) {
+                    size += obj.getType().name().length() * 2; // String chars
+                }
             }
         }
 
-        // Add to pending requests
-        pendingChunkRequests.put(key, System.currentTimeMillis());
-
-        // Submit chunk loading task to executor
-        chunkExecutor.execute(() -> {
-            try {
-                ChunkData chunk = worldService.loadOrGenerateChunk(req.getChunkX(), req.getChunkY());
-                if (chunk == null) {
-                    log.error("Failed to load chunk at {},{}", req.getChunkX(), req.getChunkY());
-                    pendingChunkRequests.remove(key);
-                    return;
-                }
-
-                // Send chunk data in parts to prevent large packets
-                sendChunkInParts(connection, chunk);
-
-                // Remove from pending after successful send
-                pendingChunkRequests.remove(key);
-
-            } catch (Exception e) {
-                log.error("Error processing chunk request: {}", e.getMessage());
-                pendingChunkRequests.remove(key);
-            }
-        });
+        return size;
     }
 
     private void sendChunkInParts(Connection connection, ChunkData chunk) {
+        // Send tiles first
+        NetworkProtocol.ChunkData tilesPacket = new NetworkProtocol.ChunkData();
+        tilesPacket.setChunkX(chunk.getChunkX());
+        tilesPacket.setChunkY(chunk.getChunkY());
+        tilesPacket.setTiles(chunk.getTiles());
+        tilesPacket.setPartial(true);
+        tilesPacket.setPartNumber(0);
+        tilesPacket.setTotalParts(2);
+        connection.sendTCP(tilesPacket);
+
+        // Brief delay to prevent network congestion
         try {
-            // First send tile data
-            NetworkProtocol.ChunkData tileData = new NetworkProtocol.ChunkData();
-            tileData.setChunkX(chunk.getChunkX());
-            tileData.setChunkY(chunk.getChunkY());
-            tileData.setTiles(chunk.getTiles());
-            tileData.setPartial(true);
-            tileData.setPartNumber(0);
-            tileData.setTotalParts(2); // Tiles + Objects
-            connection.sendTCP(tileData);
-
-            // Small delay between packets
-            Thread.sleep(10);
-
-            // Then send object data
-            NetworkProtocol.ChunkData objectData = new NetworkProtocol.ChunkData();
-            objectData.setChunkX(chunk.getChunkX());
-            objectData.setChunkY(chunk.getChunkY());
-            objectData.setObjects(chunk.getObjects());
-            objectData.setPartial(true);
-            objectData.setPartNumber(1);
-            objectData.setTotalParts(2);
-            connection.sendTCP(objectData);
-
+            Thread.sleep(CHUNK_SEND_DELAY);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("Interrupted while sending chunk data: {}", e.getMessage());
-        } catch (Exception e) {
-            log.error("Error sending chunk data: {}", e.getMessage());
+            return;
         }
+
+        // Send objects
+        NetworkProtocol.ChunkData objectsPacket = new NetworkProtocol.ChunkData();
+        objectsPacket.setChunkX(chunk.getChunkX());
+        objectsPacket.setChunkY(chunk.getChunkY());
+        objectsPacket.setObjects(chunk.getObjects());
+        objectsPacket.setPartial(true);
+        objectsPacket.setPartNumber(1);
+        objectsPacket.setTotalParts(2);
+        connection.sendTCP(objectsPacket);
     }
 
     private void sendInitialChunks(Connection connection, PlayerData pd) {
@@ -417,10 +474,6 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         }
     }
 
-    @PreDestroy
-    public void destroy() {
-        stopServer();
-    }
     @Override
     public void processMessages(float delta) {
         multiplayerService.tick(delta);

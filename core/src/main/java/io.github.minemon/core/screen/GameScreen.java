@@ -5,7 +5,6 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.*;
-import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.*;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
@@ -52,7 +51,6 @@ public class GameScreen implements Screen {
     private final WorldRenderer worldRenderer;
     private final ChunkLoaderService chunkLoaderService;
     private final ScreenManager screenManager;
-    private final ChunkPreloaderService chunkPreloaderService;
     private final MultiplayerClient multiplayerClient;
     private final PlayerAnimationService animationService;
     private final Map<String, RemotePlayerAnimator> remotePlayerAnimators = new ConcurrentHashMap<>();
@@ -99,7 +97,6 @@ public class GameScreen implements Screen {
         this.worldRenderer = worldRenderer;
         this.chunkLoaderService = chunkLoaderService;
         this.multiplayerClient = client;
-        this.chunkPreloaderService = chunkPreloaderService;
     }
 
     private void handleDisconnection() {
@@ -263,103 +260,28 @@ public class GameScreen implements Screen {
             multiplexer.removeProcessor(pauseStage);
         }
     }
+    private void updateChunkLoading() {
+        long now = System.currentTimeMillis();
+        if (now - lastChunkUpdate > CHUNK_UPDATE_INTERVAL) {
+            lastChunkUpdate = now;
 
-    private void initializePlayerPosition() {
-        String playerName = playerService.getPlayerData().getUsername();
-        PlayerData pd = worldService.getPlayerData(playerName);
-        log.debug("initializePlayerPosition -> from worldService: username={}, x={}, y={}",
-            pd != null ? pd.getUsername() : "(null)",
-            pd != null ? pd.getX() : 0f,
-            pd != null ? pd.getY() : 0f);
-
-        // Convert world coordinates properly
-        assert pd != null;
-        float playerPixelX = pd.getX() * TILE_SIZE;
-        float playerPixelY = pd.getY() * TILE_SIZE;
-
-        // Important: Update both camera and player position
-        cameraPosX = playerPixelX;
-        cameraPosY = playerPixelY;
-        camera.position.set(cameraPosX, cameraPosY, 0);
-        camera.update();
-
-        // Ensure player service has correct position
-        playerService.setPosition((int) pd.getX(), (int) pd.getY());
-    }
-
-    private void ensureChunksLoaded() {
-        PlayerData player = playerService.getPlayerData();
-        float px = player.getX() * TILE_SIZE;
-        float py = player.getY() * TILE_SIZE;
-
-        int currentChunkX = (int) Math.floor(px / (CHUNK_SIZE * TILE_SIZE));
-        int currentChunkY = (int) Math.floor(py / (CHUNK_SIZE * TILE_SIZE));
-
-        // Immediate vicinity chunks - must be loaded before rendering
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dy = -2; dy <= 2; dy++) {
-                int chunkX = currentChunkX + dx;
-                int chunkY = currentChunkY + dy;
-                Vector2 chunkPos = new Vector2(chunkX, chunkY);
-
-                if (!worldService.isChunkLoaded(chunkPos)) {
-                    if (worldService.isMultiplayerMode()) {
-                        // Only request if not already pending
-                        if (!multiplayerClient.isPendingChunkRequest(chunkX, chunkY)) {
-                            multiplayerClient.requestChunk(chunkX, chunkY);
-                        }
-                    } else {
-                        worldService.loadChunk(chunkPos);
-                    }
-                }
+            PlayerData player = playerService.getPlayerData();
+            if (player != null) {
+                // Update chunk loading manager with player position
+                chunkLoadingManager.preloadChunksAroundPosition(
+                    player.getX(),
+                    player.getY()
+                );
             }
-        }
 
-        // Extended radius for preloading
-        for (int dx = -4; dx <= 4; dx++) {
-            for (int dy = -4; dy <= 4; dy++) {
-                // Skip chunks already processed in immediate vicinity
-                if (Math.abs(dx) <= 2 && Math.abs(dy) <= 2) continue;
-
-                int chunkX = currentChunkX + dx;
-                int chunkY = currentChunkY + dy;
-                Vector2 chunkPos = new Vector2(chunkX, chunkY);
-
-                if (!worldService.isChunkLoaded(chunkPos)) {
-                    if (worldService.isMultiplayerMode()) {
-                        if (!multiplayerClient.isPendingChunkRequest(chunkX, chunkY)) {
-                            multiplayerClient.requestChunk(chunkX, chunkY);
-                        }
-                    } else {
-                        worldService.loadChunk(chunkPos);
-                    }
-                }
-            }
+            // Update chunk loading manager state
+            chunkLoadingManager.update();
         }
     }
 
-    private void checkAndRetryFailedChunks() {
-        PlayerData player = playerService.getPlayerData();
-        float px = player.getX() * TILE_SIZE;
-        float py = player.getY() * TILE_SIZE;
-        int currentChunkX = (int) Math.floor(px / (CHUNK_SIZE * TILE_SIZE));
-        int currentChunkY = (int) Math.floor(py / (CHUNK_SIZE * TILE_SIZE));
-
-        // Retry immediate vicinity chunks if they failed to load
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dy = -2; dy <= 2; dy++) {
-                int chunkX = currentChunkX + dx;
-                int chunkY = currentChunkY + dy;
-                Vector2 chunkPos = new Vector2(chunkX, chunkY);
-
-                if (!worldService.isChunkLoaded(chunkPos) && worldService.isMultiplayerMode()) {
-                    if (!multiplayerClient.isPendingChunkRequest(chunkX, chunkY)) {
-                        multiplayerClient.requestChunk(chunkX, chunkY);
-                    }
-                }
-            }
-        }
-    }
+    private boolean chunksLoading = false;
+    private long lastChunkUpdate = 0;
+    private static final long CHUNK_UPDATE_INTERVAL = 250; // ms
 
     @Override
     public void render(float delta) {
@@ -367,15 +289,15 @@ public class GameScreen implements Screen {
         handleDisconnection();
 
         if (!handlingDisconnect) {
-            // Update chunk loading manager
-            chunkLoadingManager.update();
 
-            // Update world service which handles chunk unloading
-            worldService.update(delta);
+            // Update chunk loading
+            updateChunkLoading();
 
-            handleInput();
-            multiplayerClient.update(delta);
-            updateGame(delta);
+            // Update game state
+            if (!paused) {
+
+                updateGame(delta);
+            }
 
             // Render everything
             renderGame(delta);
@@ -400,8 +322,87 @@ public class GameScreen implements Screen {
         }
     }
 
+
+    private void initializePlayerPosition() {
+        String playerName = playerService.getPlayerData().getUsername();
+        PlayerData pd = worldService.getPlayerData(playerName);
+        log.debug("initializePlayerPosition -> from worldService: username={}, x={}, y={}",
+            pd != null ? pd.getUsername() : "(null)",
+            pd != null ? pd.getX() : 0f,
+            pd != null ? pd.getY() : 0f);
+
+        if (pd == null) {
+            log.error("Could not load player data for {}", playerName);
+            return;
+        }
+
+        // Ensure coordinates are properly bounded
+        float maxCoord = 1000000f;
+        float boundedX = Math.max(-maxCoord, Math.min(maxCoord, pd.getX()));
+        float boundedY = Math.max(-maxCoord, Math.min(maxCoord, pd.getY()));
+
+        // Convert world coordinates
+        float playerPixelX = boundedX * TILE_SIZE;
+        float playerPixelY = boundedY * TILE_SIZE;
+
+        // Validate conversion
+        if (Float.isNaN(playerPixelX) || Float.isInfinite(playerPixelX) ||
+            Float.isNaN(playerPixelY) || Float.isInfinite(playerPixelY)) {
+            log.error("Invalid position conversion: {},{} -> {},{}",
+                boundedX, boundedY, playerPixelX, playerPixelY);
+            playerPixelX = 0;
+            playerPixelY = 0;
+        }
+
+        // Update camera and player position
+        cameraPosX = playerPixelX;
+        cameraPosY = playerPixelY;
+        camera.position.set(cameraPosX, cameraPosY, 0);
+        camera.update();
+
+        // Ensure player service has correct position
+        playerService.setPosition((int)(boundedX), (int)(boundedY));
+
+        // Pre-load chunks around new position
+        chunkLoadingManager.preloadChunksAroundPosition(boundedX, boundedY);
+
+        // Mark that we're loading chunks
+        chunksLoading = true;
+    }
+
+    private void teleportPlayer(float x, float y) {
+        // Start loading chunks first
+        chunkLoadingManager.preloadChunksAroundPosition(x, y);
+        chunksLoading = true;
+
+        // Update player position
+        PlayerData player = playerService.getPlayerData();
+        player.setX(x);
+        player.setY(y);
+        playerService.setPosition((int)x, (int)y);
+
+        // Update camera
+        float pixelX = x * TILE_SIZE;
+        float pixelY = y * TILE_SIZE;
+        cameraPosX = pixelX;
+        cameraPosY = pixelY;
+        camera.position.set(cameraPosX, cameraPosY, 0);
+        camera.update();
+
+        // Sync with server if needed
+        if (multiplayerClient.isConnected()) {
+            multiplayerClient.sendPlayerMove(
+                x, y,
+                player.isWantsToRun(),
+                false,
+                player.getDirection().name().toLowerCase()
+            );
+        }
+    }
+
     private void updateGame(float delta) {
         if (!paused) {
+            handleInput();
             PlayerData player = playerService.getPlayerData();
             updateCamera();
             chunkLoaderService.updatePlayerPosition(
@@ -662,8 +663,8 @@ public class GameScreen implements Screen {
             multiplayerClient.disconnect();
             log.info("Disconnected from server during screen disposal");
         }
-        remotePlayerAnimators.clear();
 
+        // Dispose resources
         batch.dispose();
         font.dispose();
         pauseStage.dispose();
@@ -671,7 +672,8 @@ public class GameScreen implements Screen {
         pauseSkin.dispose();
         hudSkin.dispose();
         worldRenderer.dispose();
-        chunkLoaderService.dispose();
-        chunkPreloaderService.dispose();
+
+        // Cleanup chunk loading
+        chunkLoadingManager.dispose();
     }
 }

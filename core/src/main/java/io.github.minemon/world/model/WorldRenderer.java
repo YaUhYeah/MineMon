@@ -172,8 +172,6 @@ public class WorldRenderer {
         int basePx = (int) (totalHeight * 0.7f);
         int topPx  = totalHeight - basePx; // 30%
 
-        // The "top" portion is physically at the top of the image? Or bottom?
-        // If your base slice used (y=totalHeight - basePx), then top is from y=0..topPx:
         TextureRegion topRegion = new TextureRegion(
             fullTexture,
             0,

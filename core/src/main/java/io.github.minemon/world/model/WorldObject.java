@@ -44,36 +44,39 @@ public class WorldObject {
     }
 
 
-
-
     public Rectangle getCollisionBox() {
-        if (!collidable) {
-            return null;
-        }
+        if (!collidable) return null;
 
         float pixelX = tileX * 32;
         float pixelY = tileY * 32;
 
-        if (isTreeType(this.type)) {
-            float x = tileX * 32;
-            float y = tileY * 32;
-            float width = 2 * 32;   // 2 tiles wide
-            float height = 2 * 32;  // 2 tiles tall, trunk only
+        if (type == ObjectType.APRICORN_TREE) {
+            float width = 3 * 32;
+            float height = 2 * 32;
+            float offsetX = -32;
 
-            return new Rectangle(x, y, width, height);
-        }
-
-        else {
+            return new Rectangle(
+                pixelX + offsetX,
+                pixelY,
+                width,
+                height
+            );
+        } else if (isTreeType(type)) {
             return new Rectangle(
                 pixelX,
                 pixelY,
-                this.type.getWidthInTiles() * 32,
-                this.type.getHeightInTiles() * 32
+                2 * 32,
+                2 * 32
             );
         }
+
+        return new Rectangle(
+            pixelX,
+            pixelY,
+            type.getWidthInTiles() * 32,
+            type.getHeightInTiles() * 32
+        );
     }
-
-
 
     private boolean isTreeType(ObjectType t) {
         return t == ObjectType.TREE_0 ||

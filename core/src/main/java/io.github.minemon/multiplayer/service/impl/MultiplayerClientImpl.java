@@ -16,8 +16,8 @@ import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.model.ObjectType;
 import io.github.minemon.world.model.WorldObject;
+import io.github.minemon.world.service.ChunkLoadingManager;
 import io.github.minemon.world.service.WorldService;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,26 +28,52 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 @Slf4j
 @Service
 public class MultiplayerClientImpl implements MultiplayerClient {
+    // -----------------------
+    // Constants & Collections
+    // -----------------------
+    private static final int MAX_CONCURRENT_REQUESTS = 8;
+    private static final int BATCH_SIZE = 8;
+    private static final long BATCH_DELAY = 50;
+    private static final long CHUNK_REQUEST_TIMEOUT = 5000;
+
     private final Map<ChunkKey, ChunkBuffer> chunkBuffers = new ConcurrentHashMap<>();
     private final Map<String, PlayerSyncData> playerStates = new ConcurrentHashMap<>();
     private final Map<String, ChunkUpdate> loadedChunks = new ConcurrentHashMap<>();
     private final ApplicationEventPublisher eventPublisher;
-    // Add this to class fields
+
+    // This set tracks chunk requests currently in flight.
     private final Set<ChunkKey> pendingChunkRequests = ConcurrentHashMap.newKeySet();
     private final Set<String> processedLeaves = Collections.newSetFromMap(new ConcurrentHashMap<>());
+
+    // This set tracks chunk requests being processed in the "batch" logic.
+    private final Set<ChunkKey> pendingRequests = ConcurrentHashMap.newKeySet();
+
+    // IMPORTANT: Now store NetworkProtocol.ChunkRequest instead of the local one.
+    private final Queue<NetworkProtocol.ChunkRequest> chunkQueue = new ConcurrentLinkedQueue<>();
+    private final Map<String, Long> chunkRequestTimes = new ConcurrentHashMap<>();
+
+    // If you also have a separate queue for normal vs. urgent, unify them if needed:
+    private final Queue<NetworkProtocol.ChunkRequest> chunkRequestQueue = new ConcurrentLinkedQueue<>();
+
+    // ------------
+    // KryoNet Client
+    // ------------
     private Client client;
     private boolean connected = false;
+
+    // ------------
+    // Listeners
+    // ------------
     private LoginResponseListener loginResponseListener;
     private CreateUserResponseListener createUserResponseListener;
     private Runnable pendingCreateUserRequest = null;
     private Runnable pendingLoginRequest = null;
+
     @Autowired
     @Lazy
     private ScreenManager screenManager;
@@ -61,59 +87,101 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     @Lazy
     private PlayerService playerService;
     @Autowired
-    public MultiplayerClientImpl(ApplicationEventPublisher eventPublisher) { // Modify constructor
+    @Lazy
+    private ChunkLoadingManager chunkLoadingManager;
+
+    @Autowired
+    public MultiplayerClientImpl(ApplicationEventPublisher eventPublisher) {
         this.eventPublisher = eventPublisher;
     }
 
+    // ---------------------------------------------------------------
+    //    1) Public method to request a chunk with NetworkProtocol.ChunkRequest
+    // ---------------------------------------------------------------
+
+    @Override
+    public void requestChunk(int chunkX, int chunkY) {
+        if (!isConnected()) {
+            log.warn("Cannot request chunk - not connected to server");
+            return;
+        }
+
+        NetworkProtocol.ChunkRequest req = new NetworkProtocol.ChunkRequest();
+        req.setChunkX(chunkX);
+        req.setChunkY(chunkY);
+        req.setTimestamp(System.currentTimeMillis());
+
+        client.sendTCP(req);
+        log.debug("Sent chunk request to server for ({},{})", chunkX, chunkY);
+    }
     @Override
     public boolean isPendingChunkRequest(int chunkX, int chunkY) {
         return pendingChunkRequests.contains(new ChunkKey(chunkX, chunkY));
     }
 
-    @Override
-    public void requestChunk(int chunkX, int chunkY) {
-        if (!connected) return;
+    // ---------------------------------------------------------------
+    //    2) Moves the next batch of queued requests into flight
+    // ---------------------------------------------------------------
+    private void processPendingChunks() {
+        if (pendingRequests.size() >= BATCH_SIZE) {
+            return;
+        }
 
-        ChunkKey key = new ChunkKey(chunkX, chunkY);
-        if (pendingChunkRequests.add(key)) {
-            NetworkProtocol.ChunkRequest req = new NetworkProtocol.ChunkRequest();
-            req.setChunkX(chunkX);
-            req.setChunkY(chunkY);
-            req.setTimestamp(System.currentTimeMillis());
-            client.sendTCP(req);
-            log.debug("Sent chunk request for ({},{})", chunkX, chunkY);
+        int space = BATCH_SIZE - pendingRequests.size();
+        for (int i = 0; i < space; i++) {
+            NetworkProtocol.ChunkRequest request = chunkQueue.poll();
+            if (request == null) break; // no more to process
 
-            // Add timeout for chunk requests
-            scheduleChunkRequestTimeout(key);
+            ChunkKey key = new ChunkKey(request.getChunkX(), request.getChunkY());
+            if (!pendingRequests.contains(key)) {
+                sendChunkRequest(request);
+                pendingRequests.add(key);
+            }
         }
     }
 
-    private void scheduleChunkRequestTimeout(ChunkKey key) {
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-        scheduler.schedule(() -> {
-            if (pendingChunkRequests.remove(key)) {
-                // If request timed out, try again
-                requestChunk(key.x, key.y);
+    // ---------------------------------------------------------------
+    //    3) Actually sends the chunk request to the server
+    // ---------------------------------------------------------------
+    private void sendChunkRequest(NetworkProtocol.ChunkRequest request) {
+        // Optionally update the timestamp
+        request.setTimestamp(System.currentTimeMillis());
+
+        client.sendTCP(request);
+        log.debug("Sent chunk request for ({},{})", request.getChunkX(), request.getChunkY());
+    }
+
+    // ---------------------------------------------------------------
+    //    4) For stale or additional chunk requests, we do the same
+    // ---------------------------------------------------------------
+    private void handleChunkRequest(int chunkX, int chunkY) {
+        ChunkKey key = new ChunkKey(chunkX, chunkY);
+        if (!pendingChunkRequests.contains(key)) {
+            if (pendingChunkRequests.size() < MAX_CONCURRENT_REQUESTS) {
+                // Rebuild the request from the actual protocol class
+                NetworkProtocol.ChunkRequest req = new NetworkProtocol.ChunkRequest();
+                req.setChunkX(chunkX);
+                req.setChunkY(chunkY);
+                req.setTimestamp(System.currentTimeMillis());
+
+                sendChunkRequest(req);
+                pendingChunkRequests.add(key);
+                chunkRequestTimes.put(key.toString(), System.currentTimeMillis());
+            } else {
+                // Defer if too many requests are in flight:
+                NetworkProtocol.ChunkRequest laterReq = new NetworkProtocol.ChunkRequest();
+                laterReq.setChunkX(chunkX);
+                laterReq.setChunkY(chunkY);
+                laterReq.setTimestamp(System.currentTimeMillis());
+
+                chunkRequestQueue.offer(laterReq);
             }
-        }, 5, TimeUnit.SECONDS);
-        scheduler.shutdown();
+        }
     }
 
-    @Override
-    public Map<String, PlayerSyncData> getPlayerStates() {
-        return playerStates;
-    }
-
-    @Override
-    public void setLoginResponseListener(LoginResponseListener listener) {
-        this.loginResponseListener = listener;
-    }
-
-    @Override
-    public void setCreateUserResponseListener(CreateUserResponseListener listener) {
-        this.createUserResponseListener = listener;
-    }
-
+    // ---------------------------------------------------------------
+    //    5) Connect, login, creation, etc.
+    // ---------------------------------------------------------------
     @Override
     public void connect(String serverIP, int tcpPort, int udpPort) {
         if (connected) {
@@ -159,7 +227,6 @@ public class MultiplayerClientImpl implements MultiplayerClient {
                 });
             }
 
-
             @Override
             public void received(Connection connection, Object object) {
                 handleMessage(object);
@@ -188,8 +255,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         if (!connected) {
             log.warn("Not connected to server. Cannot send login request.");
             if (loginResponseListener != null) {
-                loginResponseListener.onLoginResponse(false,
-                    "Not connected to server.", "", 0, 0);
+                loginResponseListener.onLoginResponse(false, "Not connected to server.", "", 0, 0);
             }
             return;
         }
@@ -206,8 +272,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         if (!connected) {
             log.warn("Not connected to server. Cannot send create user request.");
             if (createUserResponseListener != null) {
-                createUserResponseListener.onCreateUserResponse(false,
-                    "Not connected to server.");
+                createUserResponseListener.onCreateUserResponse(false, "Not connected to server.");
             }
             return;
         }
@@ -218,37 +283,31 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         log.info("Sent CreateUserRequest for user: {}", username);
     }
 
+    // ---------------------------------------------------------------
+    //    6) Clean up chunk requests, handle partial or full data
+    // ---------------------------------------------------------------
     private void handleChunkData(NetworkProtocol.ChunkData chunkData) {
-        if (!chunkData.isPartial()) {
-            // Single packet chunk, process directly
-            worldService.loadOrReplaceChunkData(
-                chunkData.getChunkX(),
-                chunkData.getChunkY(),
-                chunkData.getTiles(),
-                chunkData.getObjects()
-            );
-            return;
-        }
-
-        // Handle partial chunk
         ChunkKey key = new ChunkKey(chunkData.getChunkX(), chunkData.getChunkY());
-        ChunkBuffer buffer = chunkBuffers.computeIfAbsent(key, k ->
-            new ChunkBuffer(chunkData.getTiles(), chunkData.getTotalParts())
+
+        log.debug("Received chunk data for ({},{})", chunkData.getChunkX(), chunkData.getChunkY());
+
+        // Update the world data
+        worldService.loadOrReplaceChunkData(
+            chunkData.getChunkX(),
+            chunkData.getChunkY(),
+            chunkData.getTiles(),
+            chunkData.getObjects()
         );
 
-        // Add objects from this part
-        buffer.getObjects().addAll(chunkData.getObjects());
-        buffer.setReceivedParts(buffer.getReceivedParts() + 1);
-
-        // Check if we have all parts
-        if (buffer.getReceivedParts() == buffer.getTotalParts()) {
-            worldService.loadOrReplaceChunkData(
-                chunkData.getChunkX(),
-                chunkData.getChunkY(),
-                buffer.getTiles(),
-                buffer.getObjects()
-            );
-            chunkBuffers.remove(key);
+        // Mark chunk as complete in loading manager
+        chunkLoadingManager.markChunkComplete(chunkData.getChunkX(), chunkData.getChunkY());
+    }
+    private void processChunkQueue() {
+        while (pendingChunkRequests.size() < MAX_CONCURRENT_REQUESTS && !chunkRequestQueue.isEmpty()) {
+            NetworkProtocol.ChunkRequest request = chunkRequestQueue.poll();
+            if (request != null) {
+                handleChunkRequest(request.getChunkX(), request.getChunkY());
+            }
         }
     }
 
@@ -268,7 +327,8 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             if (loginResponseListener != null) {
                 loginResponseListener.onLoginResponse(
                     resp.isSuccess(),
-                    resp.getMessage() != null ? resp.getMessage() : (resp.isSuccess() ? "Success" : "Failed"),
+                    resp.getMessage() != null ? resp.getMessage()
+                        : (resp.isSuccess() ? "Success" : "Failed"),
                     resp.getUsername(),
                     resp.getX(),
                     resp.getY()
@@ -279,93 +339,104 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             if (createUserResponseListener != null) {
                 createUserResponseListener.onCreateUserResponse(
                     createResp.isSuccess(),
-                    createResp.getMessage() != null ? createResp.getMessage() : (createResp.isSuccess() ? "Account created." : "Failed to create account.")
+                    createResp.getMessage() != null ? createResp.getMessage()
+                        : (createResp.isSuccess() ? "Account created." : "Failed to create account.")
                 );
             }
-        }
-
-        if (object instanceof NetworkProtocol.PlayerStatesUpdate pUpdate) {
-            // Compare with previous state to detect joins/leaves
-            Set<String> previousPlayers = new HashSet<>(playerStates.keySet());
-            Set<String> currentPlayers = new HashSet<>(pUpdate.getPlayers().keySet());
-
-            // Find disconnected players
-            Set<String> leaves = new HashSet<>(previousPlayers);
-            leaves.removeAll(currentPlayers);
-
-            // Handle player leaves
-            for (String username : leaves) {
-                if (!processedLeaves.contains(username)) {
-                    handlePlayerLeave(username);
-                    processedLeaves.add(username);
-                }
-            }
-
-            // Clear processed leaves for players that rejoin
-            processedLeaves.removeIf(currentPlayers::contains);
-
-            // Find new players
-            Set<String> joins = new HashSet<>(currentPlayers);
-            joins.removeAll(previousPlayers);
-
-            // Handle new joins
-            for (String username : joins) {
-                handlePlayerJoin(username);
-            }
-
-            // Update all player states
-            updatePlayerStates(pUpdate.getPlayers());
-
-            log.debug("Updated player states. Total players: {}", playerStates.size());
-        } else if (object instanceof NetworkProtocol.ChunkData chunkData) {
-            handleChunkData(chunkData);
+        } else if (object instanceof NetworkProtocol.PlayerStatesUpdate pUpdate) {
+            handlePlayerStatesUpdate(pUpdate);
+        } else if (object instanceof NetworkProtocol.ChunkData cData) {
+            handleChunkData(cData);
+            chunkLoadingManager.markChunkComplete(cData.getChunkX(), cData.getChunkY());
+        } else if (object instanceof NetworkProtocol.ChunkRequestAck ack) {
+            String key = ack.getChunkX() + "," + ack.getChunkY();
+            pendingChunkRequests.remove(key);
         } else if (object instanceof NetworkProtocol.WorldObjectsUpdate wObjects) {
-            wObjects.getObjects().forEach(update -> {
-                String key = (update.getTileX() / 16) + "," + (update.getTileY() / 16);
-                ChunkUpdate cu = loadedChunks.get(key);
-                if (cu != null) {
-                    if (update.isRemoved()) {
-                        cu.getObjects().removeIf(o -> o.getId().equals(update.getObjectId()));
-                    } else {
-                        boolean found = false;
-                        for (WorldObject wo : cu.getObjects()) {
-                            if (wo.getId().equals(update.getObjectId())) {
-                                wo.setTileX(update.getTileX());
-                                wo.setTileY(update.getTileY());
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            ObjectType objType = ObjectType.valueOf(update.getType());
-                            WorldObject newObj = new WorldObject(
-                                update.getTileX(),
-                                update.getTileY(),
-                                objType,
-                                objType.isCollidable()
-                            );
-                            cu.getObjects().add(newObj);
-                        }
-                    }
-                }
-                // Update the local world service with the object changes
-                Gdx.app.postRunnable(() -> {
-                    worldService.updateWorldObjectState(update);
-                });
-            });
-        } else if (object instanceof io.github.minemon.chat.model.ChatMessage chatMsg) {
+            handleWorldObjectsUpdate(wObjects);
+        } else if (object instanceof ChatMessage chatMsg) {
             log.info("Received ChatMessage from {}: {}", chatMsg.getSender(), chatMsg.getContent());
             eventPublisher.publishEvent(new ChatMessageReceivedEvent(this, chatMsg));
         } else if (object instanceof NetworkProtocol.ServerShutdownNotice notice) {
             if (screenManager != null) {
                 Gdx.app.postRunnable(() -> {
-                    disconnect();  // Make sure we disconnect
+                    disconnect();
                     screenManager.showScreen(ServerDisconnectScreen.class);
                 });
             }
         } else {
             log.warn("Unknown message type received: {}", object.getClass().getName());
         }
+    }
+
+    private void handlePlayerStatesUpdate(NetworkProtocol.PlayerStatesUpdate pUpdate) {
+        // Compare with previous state to detect joins/leaves
+        Set<String> previousPlayers = new HashSet<>(playerStates.keySet());
+        Set<String> currentPlayers = new HashSet<>(pUpdate.getPlayers().keySet());
+
+        // Find disconnected players
+        Set<String> leaves = new HashSet<>(previousPlayers);
+        leaves.removeAll(currentPlayers);
+
+        // Handle player leaves
+        for (String username : leaves) {
+            if (!processedLeaves.contains(username)) {
+                handlePlayerLeave(username);
+                processedLeaves.add(username);
+            }
+        }
+
+        // Clear processed leaves for players that rejoin
+        processedLeaves.removeIf(currentPlayers::contains);
+
+        // Find new players
+        Set<String> joins = new HashSet<>(currentPlayers);
+        joins.removeAll(previousPlayers);
+
+        // Handle new joins
+        for (String username : joins) {
+            handlePlayerJoin(username);
+        }
+
+        // Update all player states
+        updatePlayerStates(pUpdate.getPlayers());
+
+        log.debug("Updated player states. Total players: {}", playerStates.size());
+    }
+
+    private void handleWorldObjectsUpdate(NetworkProtocol.WorldObjectsUpdate wObjects) {
+        wObjects.getObjects().forEach(update -> {
+            String key = (update.getTileX() / 16) + "," + (update.getTileY() / 16);
+            ChunkUpdate cu = loadedChunks.get(key);
+            if (cu != null) {
+                if (update.isRemoved()) {
+                    cu.getObjects().removeIf(o -> o.getId().equals(update.getObjectId()));
+                } else {
+                    boolean found = false;
+                    for (WorldObject wo : cu.getObjects()) {
+                        if (wo.getId().equals(update.getObjectId())) {
+                            wo.setTileX(update.getTileX());
+                            wo.setTileY(update.getTileY());
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        ObjectType objType = ObjectType.valueOf(update.getType());
+                        WorldObject newObj = new WorldObject(
+                            update.getTileX(),
+                            update.getTileY(),
+                            objType,
+                            objType.isCollidable()
+                        );
+                        cu.getObjects().add(newObj);
+                    }
+                }
+            }
+            // Update the local world service with the object changes
+            Gdx.app.postRunnable(() -> {
+                worldService.updateWorldObjectState(update);
+            });
+        });
     }
 
     private void handlePlayerLeave(String username) {
@@ -397,7 +468,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             PlayerSyncData newState = entry.getValue();
             PlayerSyncData oldState = playerStates.get(username);
 
-            // Skip local player's movement state updates - let PlayerService handle those
+            // Skip local player's movement state
             if (username.equals(localUsername)) {
                 playerStates.put(username, newState);
                 continue;
@@ -409,36 +480,59 @@ public class MultiplayerClientImpl implements MultiplayerClient {
                 float dy = Math.abs(oldState.getY() - newState.getY());
                 boolean actuallyMoving = dx > 0.001f || dy > 0.001f;
 
-                // If position actually changed, they are moving
                 if (actuallyMoving) {
                     newState.setMoving(true);
-                    // Keep animation time flowing if they were already moving
                     if (oldState.isMoving()) {
                         newState.setAnimationTime(oldState.getAnimationTime());
                     }
                 } else {
-                    // Position hasn't changed, but respect server's movement state
-                    // This allows for movement animations while players are actively moving
                     newState.setMoving(newState.isMoving());
                     if (newState.isMoving()) {
-                        // If they're marked as moving, continue animation
                         newState.setAnimationTime(oldState.getAnimationTime());
                     } else {
-                        // If they've stopped, reset animation
                         newState.setAnimationTime(0f);
                     }
                 }
             }
-
             playerStates.put(username, newState);
         }
     }
 
+    // ---------------------------------------------------------------
+    //    7) Stale request cleanup
+    // ---------------------------------------------------------------
+    private void cleanupStaleRequests() {
+        long now = System.currentTimeMillis();
+        Iterator<Map.Entry<String, Long>> it = chunkRequestTimes.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<String, Long> entry = it.next();
+            if (now - entry.getValue() > CHUNK_REQUEST_TIMEOUT) {
+                String[] coords = entry.getKey().split(",");
+                int x = Integer.parseInt(coords[0]);
+                int y = Integer.parseInt(coords[1]);
+                ChunkKey key = new ChunkKey(x, y);
+                pendingChunkRequests.remove(key);
+                it.remove();
+
+                // Requeue failed request
+                NetworkProtocol.ChunkRequest retry = new NetworkProtocol.ChunkRequest();
+                retry.setChunkX(x);
+                retry.setChunkY(y);
+                retry.setTimestamp(now);
+
+                chunkRequestQueue.offer(retry);
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------
+    //    8) Helper for verifying server connection
+    // ---------------------------------------------------------------
     private boolean checkServerConnection() {
         if (!connected || client == null) {
             log.debug("Lost connection to server");
             Gdx.app.postRunnable(() -> {
-                disconnect();  // Clean disconnect
+                disconnect();
                 screenManager.showScreen(ServerDisconnectScreen.class);
             });
             return false;
@@ -446,6 +540,9 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         return true;
     }
 
+    // ---------------------------------------------------------------
+    //    9) Required MultiplayerClient interface methods
+    // ---------------------------------------------------------------
     @Override
     public void disconnect() {
         if (connected) {
@@ -471,6 +568,7 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     public boolean isConnected() {
         return connected && worldService.isMultiplayerMode();
     }
+
     @Override
     public void sendPlayerMove(float x, float y, boolean running, boolean moving, String direction) {
         if (!connected) return;
@@ -492,9 +590,13 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             return;
         }
 
-        String localUsername = playerService.getPlayerData().getUsername();
+        // Process chunk queue
+        processChunkQueue();
 
-        // Update animations independently for each player
+        // Clean up stale requests
+        cleanupStaleRequests();
+
+        String localUsername = playerService.getPlayerData().getUsername();
         for (Map.Entry<String, PlayerSyncData> entry : playerStates.entrySet()) {
             String username = entry.getKey();
             PlayerSyncData psd = entry.getValue();
@@ -503,16 +605,30 @@ public class MultiplayerClientImpl implements MultiplayerClient {
             if (username.equals(localUsername)) {
                 continue;
             }
-
             // Update animation time only if the player is moving
             if (psd.isMoving()) {
                 psd.setAnimationTime(psd.getAnimationTime() + delta);
             }
-
             // Track previous state
             psd.setWasMoving(psd.isMoving());
             psd.setLastDirection(psd.getDirection());
         }
+    }
+
+
+    @Override
+    public Map<String, PlayerSyncData> getPlayerStates() {
+        return playerStates;
+    }
+
+    @Override
+    public void setLoginResponseListener(LoginResponseListener listener) {
+        this.loginResponseListener = listener;
+    }
+
+    @Override
+    public void setCreateUserResponseListener(CreateUserResponseListener listener) {
+        this.createUserResponseListener = listener;
     }
 
     @Override
@@ -531,18 +647,20 @@ public class MultiplayerClientImpl implements MultiplayerClient {
         this.pendingCreateUserRequest = action;
     }
 
+    // ---------------------------------------------------------------
+    //    10) Internal support classes
+    // ---------------------------------------------------------------
     @Data
-    private static class ChunkBuffer {
+    static class ChunkKey {
+        private final int x;
+        private final int y;
+    }
+
+    @Data
+    static class ChunkBuffer {
         private final int[][] tiles;
         private final List<WorldObject> objects = new ArrayList<>();
         private final int totalParts;
         private int receivedParts = 0;
-    }
-
-    @Data
-    @AllArgsConstructor
-    private static class ChunkKey {
-        private final int x;
-        private final int y;
     }
 }

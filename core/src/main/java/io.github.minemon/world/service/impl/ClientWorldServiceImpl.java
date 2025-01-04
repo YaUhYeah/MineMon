@@ -15,6 +15,7 @@ import io.github.minemon.multiplayer.model.WorldObjectUpdate;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.player.model.PlayerDirection;
+import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.biome.config.BiomeConfigurationLoader;
 import io.github.minemon.world.biome.model.Biome;
 import io.github.minemon.world.biome.model.BiomeType;
@@ -32,6 +33,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -42,7 +44,6 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     private static final long URGENT_REQUEST_TIMEOUT = 1000;
     private final WorldGenerator worldGenerator;
     @Autowired
-
     @Lazy
     private final WorldObjectManager worldObjectManager;
     private final TileManager tileManager;
@@ -53,6 +54,7 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     private final WorldData worldData = new WorldData();
     private final Map<String, Long> chunkRequestTimes = new ConcurrentHashMap<>();
     private final Set<Vector2> failedRequests = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    private final Map<String, Object> chunkLocks = new ConcurrentHashMap<>();
     @Value("${world.defaultName:defaultWorld}")
     private String defaultWorldName;
     @Value("${world.saveDir:save/worlds/}")
@@ -62,12 +64,13 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     @Lazy
     private MultiplayerClient multiplayerClient;
     private boolean isMultiplayerMode = false;
-    @Autowired
-    private ChunkLoadingQueue chunkLoadingQueue;
     private boolean disconnectHandled = false;
     @Autowired
     @Lazy
     private ChunkLoadingManager chunkLoadingManager;
+    @Autowired
+    @Lazy
+    private PlayerService playerService;
 
     public ClientWorldServiceImpl(
         WorldConfig worldConfig,
@@ -84,11 +87,8 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         this.tileManager = tileManager;
         this.biomeLoader = biomeLoader;
         this.biomeService = biomeService;
-        // this.worldMetadataRepo = worldMetadataRepo;   // REMOVED
-        // this.chunkRepository = chunkRepository;       // REMOVED
-        // this.playerDataRepository = playerDataRepository; // REMOVED
         this.objectTextureManager = objectTextureManager;
-        this.jsonWorldDataService = jsonWorldDataService; // NEW
+        this.jsonWorldDataService = jsonWorldDataService;
     }
 
     @Override
@@ -207,63 +207,6 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         fbo.dispose();
 
         log.info("Generated world thumbnail for '{}'", worldName);
-    }
-
-    @Override
-    public int[][] getChunkTiles(int chunkX, int chunkY) {
-        String key = chunkX + "," + chunkY;
-        ChunkData cData = getWorldData().getChunks().get(key);
-
-        if (cData == null) {
-            if (isMultiplayerMode) {
-                if (!chunkLoadingQueue.isChunkInProgress(chunkX, chunkY)) {
-                    log.debug("Requesting missing chunk {}", key);
-                    chunkLoadingQueue.queueChunkRequest(chunkX, chunkY);
-                    multiplayerClient.requestChunk(chunkX, chunkY);
-                }
-                return null;
-            } else {
-                loadOrGenerateChunk(chunkX, chunkY);
-                cData = getWorldData().getChunks().get(key);
-            }
-        }
-
-        return cData != null ? cData.getTiles() : null;
-    }
-
-    @Override
-    public void loadOrReplaceChunkData(int chunkX, int chunkY, int[][] tiles, List<WorldObject> objects) {
-        if (worldData.getWorldName() == null) {
-            worldData.setWorldName("serverWorld");
-            worldData.setSeed(System.currentTimeMillis());
-        }
-
-        String key = chunkX + "," + chunkY;
-        ChunkData cData = new ChunkData();
-        cData.setChunkX(chunkX);
-        cData.setChunkY(chunkY);
-        cData.setTiles(tiles);
-        cData.setObjects(objects != null ? new ArrayList<>(objects) : new ArrayList<>());
-
-        // Mark chunk as complete in the manager
-        chunkLoadingManager.markChunkComplete(chunkX, chunkY);
-
-        // Update world data
-        worldData.getChunks().put(key, cData);
-        log.debug("Successfully loaded chunk {}", key);
-    }
-
-    private void retryFailedRequests() {
-        Iterator<Vector2> iterator = failedRequests.iterator();
-        while (iterator.hasNext()) {
-            Vector2 failedChunk = iterator.next();
-            if (worldData.getChunks().containsKey(failedChunk.x + "," + failedChunk.y)) {
-                iterator.remove();
-                continue;
-            }
-
-            requestChunkWithTimeout((int) failedChunk.x, (int) failedChunk.y, true);
-        }
     }
 
     @Override
@@ -550,6 +493,9 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     }
 
     private void unloadDistantChunks(Rectangle viewBounds) {
+        if (isMultiplayerMode) {
+            return; // don't unload in multiplayer
+        }
         final int UNLOAD_DISTANCE = 5; // Chunks
 
         int playerChunkX = (int) Math.floor(viewBounds.x / (CHUNK_SIZE * TILE_SIZE));
@@ -601,13 +547,14 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             height + (bufferSize * 2)
         );
     }
+
     @Override
     public void forceLoadChunksAt(float tileX, float tileY) {
-        // Suppose we want a 2-chunk radius
         int RADIUS = 2;
         int chunkX = (int) Math.floor(tileX / CHUNK_SIZE);
         int chunkY = (int) Math.floor(tileY / CHUNK_SIZE);
 
+        // Only request chunks we don't have yet
         for (int dx = -RADIUS; dx <= RADIUS; dx++) {
             for (int dy = -RADIUS; dy <= RADIUS; dy++) {
                 int cx = chunkX + dx;
@@ -616,15 +563,86 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
                 if (!isChunkLoaded(chunkPos)) {
                     if (isMultiplayerMode()) {
-                        // Use your queue-based or immediate approach
-                        // to request from the server
-                        chunkLoadingManager.queueChunkRequest(cx, cy, true /* highPriority */);
+                        // Don't check if request is pending - let ChunkLoadingManager handle that
+                        chunkLoadingManager.queueChunkRequest(cx, cy, true);
                     } else {
-                        // Singleplayer -> immediately load/generate
                         loadOrGenerateChunk(cx, cy);
                     }
                 }
             }
+        }
+    }
+
+    @Override
+    public int[][] getChunkTiles(int chunkX, int chunkY) {
+        String key = chunkX + "," + chunkY;
+        ChunkData chunkData = worldData.getChunks().get(key);
+
+        if (chunkData == null && isMultiplayerMode()) {
+            // Check viewport distance for priority
+            Vector2 playerChunkPos = new Vector2(
+                playerService.getPlayerData().getX() / CHUNK_SIZE,
+                playerService.getPlayerData().getY() / CHUNK_SIZE
+            );
+
+            Vector2 requestedChunkPos = new Vector2(chunkX, chunkY);
+            float distance = playerChunkPos.dst(requestedChunkPos);
+
+            // Immediate vicinity (high priority) vs background loading
+            boolean urgent = distance <= 3;
+
+            if (!chunkLoadingManager.isChunkInProgress(chunkX, chunkY)) {
+                // Queue the request with appropriate priority
+                chunkLoadingManager.queueChunkRequest(chunkX, chunkY, urgent);
+                log.debug("Queued {} priority chunk request for ({},{})",
+                    urgent ? "high" : "normal", chunkX, chunkY);
+            }
+            return null; // Return null while waiting for chunk data
+        }
+
+        if (chunkData != null) {
+            // Successfully loaded/received chunk
+            return chunkData.getTiles();
+        }
+
+        return null;
+    }
+    @Override
+    public void loadOrReplaceChunkData(int chunkX, int chunkY, int[][] tiles, List<WorldObject> objects) {
+        // Don't ignore incoming chunk data in multiplayer mode
+        String key = chunkX + "," + chunkY;
+
+        synchronized (chunkLocks.computeIfAbsent(key, k -> new Object())) {
+            ChunkData chunk = worldData.getChunks().computeIfAbsent(key, k -> {
+                ChunkData newChunk = new ChunkData();
+                newChunk.setChunkX(chunkX);
+                newChunk.setChunkY(chunkY);
+                return newChunk;
+            });
+
+            // Update tiles if provided
+            if (tiles != null) {
+                chunk.setTiles(tiles);
+            }
+
+            // Merge objects if provided
+            if (objects != null) {
+                if (chunk.getObjects() == null) {
+                    chunk.setObjects(new ArrayList<>(objects));
+                } else {
+                    // Keep existing objects that aren't being replaced
+                    List<WorldObject> mergedObjects = new ArrayList<>(
+                        chunk.getObjects().stream()
+                            .filter(existing -> objects.stream()
+                                .noneMatch(newObj ->
+                                    newObj.getId().equals(existing.getId())))
+                            .collect(Collectors.toList())
+                    );
+                    mergedObjects.addAll(objects);
+                    chunk.setObjects(mergedObjects);
+                }
+            }
+            chunkLoadingManager.markChunkComplete(chunkX, chunkY);
         }
     }
 
@@ -672,9 +690,6 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         String key = String.format("%d,%d", (int) chunkPos.x, (int) chunkPos.y);
         Map<String, ChunkData> chunks = worldData.getChunks();
         boolean loaded = chunks.containsKey(key);
-        if (!loaded) {
-            log.debug("Chunk {} not loaded", key);
-        }
         return loaded;
     }
 
@@ -691,7 +706,10 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
         if (multiplayerClient != null && multiplayerClient.isConnected()) {
             if (!multiplayerClient.isPendingChunkRequest(chunkX, chunkY)) {
-                multiplayerClient.requestChunk(chunkX, chunkY);
+                if (isMultiplayerMode && !chunkLoadingManager.isChunkInProgress(chunkX, chunkY)) {
+                    chunkLoadingManager.queueChunkRequest(chunkX, chunkY, /* highPriority= */ true);
+                }
+
                 chunkRequestTimes.put(key, now);
 
                 if (urgent) {
@@ -705,15 +723,12 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     @Override
     public void loadChunk(Vector2 chunkPos) {
-        if (!isMultiplayerMode) {
+        if (isMultiplayerMode) {
+            chunkLoadingManager.queueChunkRequest((int) chunkPos.x, (int) chunkPos.y, false);
+        } else {
             loadOrGenerateChunk((int) chunkPos.x, (int) chunkPos.y);
-            return;
         }
 
-        if (!chunkLoadingQueue.isChunkInProgress((int) chunkPos.x, (int) chunkPos.y)) {
-            chunkLoadingQueue.queueChunkRequest((int) chunkPos.x, (int) chunkPos.y);
-            multiplayerClient.requestChunk((int) chunkPos.x, (int) chunkPos.y);
-        }
     }
 
 

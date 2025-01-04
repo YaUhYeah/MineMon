@@ -27,6 +27,7 @@ public final class NetworkProtocol {
         kryo.register(HashSet.class);
         kryo.register(WorldObject.class);
         kryo.register(WorldObject[].class);
+        kryo.register(ChunkRequestAck.class);
         kryo.register(ArrayList.class);
         kryo.register(int[].class);
         kryo.register(int[][].class);
@@ -68,6 +69,11 @@ public final class NetworkProtocol {
         private String password;
     }
 
+    @Data
+    public static class ChunkRequestAck {
+        private int chunkX;
+        private int chunkY;
+    }
     @Data
     public static class CreateUserResponse {
         private boolean success;

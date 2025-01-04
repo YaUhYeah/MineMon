@@ -15,6 +15,7 @@ import io.github.minemon.player.service.PlayerAnimationService;
 import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.model.ChunkData;
 import io.github.minemon.world.model.WorldObject;
+import io.github.minemon.world.service.ChunkLoadingManager;
 import io.github.minemon.world.service.WorldService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,23 +30,25 @@ public class PlayerServiceImpl implements PlayerService {
     private final PlayerModel playerModel;
     private final PlayerAnimationService animationService;
     private final WorldService worldService;
-    private String username;
     private final float walkStepDuration;
     private final float runStepDuration;
     private final InputService inputService;
+    private String username;
     private PlayerDirection bufferedDirection = null;
 
     @Autowired
     private EventBus eventBus;
 
     @Autowired
+    private ChunkLoadingManager chunkLoadingManager;
+    @Autowired
     private MultiplayerClient multiplayerClient;
 
     public PlayerServiceImpl(
-            PlayerAnimationService animationService,
-            InputService inputService,
-            PlayerProperties playerProperties,
-            WorldService worldService
+        PlayerAnimationService animationService,
+        InputService inputService,
+        PlayerProperties playerProperties,
+        WorldService worldService
     ) {
         this.playerModel = new PlayerModel(0, 0);
         this.animationService = animationService;
@@ -88,7 +91,7 @@ public class PlayerServiceImpl implements PlayerService {
 
         if (isColliding(targetTileX, targetTileY)) {
             log.debug("Collision at ({}, {}): no movement, but direction updated to {}",
-                    targetTileX, targetTileY, direction);
+                targetTileX, targetTileY, direction);
             // No movement, remain idle, but direction is changed
             playerModel.setMoving(false);
             return;
@@ -112,9 +115,14 @@ public class PlayerServiceImpl implements PlayerService {
         playerModel.setMovementTime(0f);
 
         playerModel.setMoving(true);
-
+        if (worldService.isMultiplayerMode()) {
+            chunkLoadingManager.preloadChunksAroundPosition(
+                playerModel.getTargetPosition().x,
+                playerModel.getTargetPosition().y
+            );
+        }
         log.debug("Initiated movement: {}, Target=({}, {}), Duration={}",
-                direction, targetX, targetY, duration);
+            direction, targetX, targetY, duration);
     }
 
 
@@ -187,11 +195,11 @@ public class PlayerServiceImpl implements PlayerService {
                 PlayerData pd = getPlayerData();
                 worldService.setPlayerData(pd);
                 multiplayerClient.sendPlayerMove(
-                        pd.getX(),
-                        pd.getY(),
-                        pd.isWantsToRun(),
-                        pd.isMoving(),
-                        pd.getDirection().name().toLowerCase()
+                    pd.getX(),
+                    pd.getY(),
+                    pd.isWantsToRun(),
+                    pd.isMoving(),
+                    pd.getDirection().name().toLowerCase()
                 );
 
                 if (bufferedDirection != null) {
@@ -235,10 +243,10 @@ public class PlayerServiceImpl implements PlayerService {
     @Override
     public void render(SpriteBatch batch) {
         TextureRegion frame = animationService.getCurrentFrame(
-                playerModel.getDirection(),
-                playerModel.isMoving(),
-                playerModel.isRunning(),
-                playerModel.getStateTime()
+            playerModel.getDirection(),
+            playerModel.isMoving(),
+            playerModel.isRunning(),
+            playerModel.getStateTime()
         );
         batch.draw(frame, playerModel.getPosition().x, playerModel.getPosition().y);
     }

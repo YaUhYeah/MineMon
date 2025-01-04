@@ -15,22 +15,26 @@ import io.github.minemon.server.AuthService;
 import io.github.minemon.world.service.impl.JsonWorldDataService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.env.Environment;
 
 @Configuration
 public class MultiplayerConfig {
 
     @Bean
+    @Lazy
     public FileAccessService fileAccessService() {
         return new LocalFileAccessService();
     }
 
     @Bean
+    @Lazy
     public ServerConnectionService serverConnectionService(FileAccessService fileAccessService) {
         return new ServerConnectionServiceImpl(fileAccessService);
     }
 
     @Bean
+    @Lazy
     public MultiplayerService multiplayerService(WorldService worldService, PlayerService playerService, Environment env) {
         return new MultiplayerServiceImpl(worldService, env);
     }
