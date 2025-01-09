@@ -6,6 +6,7 @@ import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.scenes.scene2d.*;
 import com.badlogic.gdx.scenes.scene2d.ui.*;
 import com.badlogic.gdx.scenes.scene2d.utils.*;
@@ -25,17 +26,25 @@ import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.service.WorldService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Component
 @Slf4j
-public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListener, MultiplayerClient.CreateUserResponseListener {
+@Component
+@Scope("prototype")
+public class LoginScreen implements Screen,
+    MultiplayerClient.LoginResponseListener,
+    MultiplayerClient.CreateUserResponseListener {
 
-    private static final float MIN_WIDTH = 800;
-    private static final float MIN_HEIGHT = 480;
+    
+    private static final float MIN_WORLD_WIDTH = 960f;
+    private static final float MIN_WORLD_HEIGHT = 540f;
+    private static final float MAX_WORLD_WIDTH = 1920f;
+    private static final float MAX_WORLD_HEIGHT = 1080f;
+
     private static final String BACKGROUND_PATH = "Textures/UI/ethereal.png";
 
     private final AudioService audioService;
@@ -47,16 +56,18 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
     @Autowired
     private PlayerService playerService;
 
-    private Stage stage;
-    private Skin skin;
-    private ServerListView serverListView;
-    private Table root;
-    private Dialog connectingDialog;
-    private Dialog loginDialog;
     @Autowired
     private WorldService worldService;
+
     @Autowired
     private ClientConnectionManager connectionManager;
+
+    private Stage stage;
+    private Skin skin;
+    private Table root;
+    private ServerListView serverListView;
+    private Dialog connectingDialog;
+    private Dialog loginDialog;
 
     @Autowired
     public LoginScreen(
@@ -74,7 +85,17 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
 
     @Override
     public void show() {
-        stage = new Stage(new ExtendViewport(MIN_WIDTH, MIN_HEIGHT));
+        
+        stage = new Stage(
+            new ExtendViewport(
+                MIN_WORLD_WIDTH, MIN_WORLD_HEIGHT,
+                MAX_WORLD_WIDTH, MAX_WORLD_HEIGHT
+            )
+        );
+
+        
+        Gdx.input.setCatchKey(Input.Keys.BACK, true);
+
         uiService.initialize();
         uiService.getDialogFactory().setStage(stage);
         skin = uiService.getSkin();
@@ -89,36 +110,51 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
     private void createUI() {
         setBackground();
 
+        
         root = new Table(skin);
         root.setFillParent(true);
         stage.addActor(root);
 
+        
+        float screenWidth = stage.getViewport().getWorldWidth();
+        float scaleFactor = screenWidth / 1280f; 
+
+        
         Table topBar = new Table(skin);
         topBar.setBackground(uiService.getStyleFactory().createPanelBackground());
-        topBar.pad(10);
+        topBar.pad(10 * scaleFactor);  
 
-        TextButton backButton = createSimpleButton("Back to Menu", this::handleBack);
-        topBar.add(backButton).left().padRight(20);
+        TextButton backButton = createSimpleButton("Back to Menu", this::handleBack, scaleFactor);
+        topBar.add(backButton).left().padRight(20 * scaleFactor);
 
         Label titleLabel = uiService.getStyleFactory().createTitleLabel("PokéMeetup Server List", skin);
+        
+        titleLabel.setFontScale(1.2f * scaleFactor);
+
         topBar.add(titleLabel).expandX().center();
-        topBar.add().width(100);
+        topBar.add().width(100 * scaleFactor);
 
         root.add(topBar).expandX().fillX().row();
 
+        
         Table headerRow = new Table(skin);
         headerRow.setBackground(skin.newDrawable("white", 0.2f, 0.2f, 0.2f, 0.8f));
-        headerRow.pad(10);
+        headerRow.pad(10 * scaleFactor);
+
         Label nameHeader = new Label("Server Name", skin);
         nameHeader.setColor(Color.GOLD);
+        nameHeader.setFontScale(scaleFactor);
+
         Label playersHeader = new Label("Players", skin);
         playersHeader.setColor(Color.GOLD);
+        playersHeader.setFontScale(scaleFactor);
 
-        headerRow.add(nameHeader).expandX().left().padLeft(80);
-        headerRow.add(playersHeader).width(100).right().padRight(10);
+        headerRow.add(nameHeader).expandX().left().padLeft(80 * scaleFactor);
+        headerRow.add(playersHeader).width(100 * scaleFactor).right().padRight(10 * scaleFactor);
 
-        root.add(headerRow).expandX().fillX().height(40).row();
+        root.add(headerRow).expandX().fillX().height(40 * scaleFactor).row();
 
+        
         serverListView = new ServerListView(skin, loadServers());
         ScrollPane scrollPane = new ScrollPane(serverListView, skin);
         scrollPane.setFadeScrollBars(false);
@@ -128,28 +164,29 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
 
         Table serverContainer = new Table(skin);
         serverContainer.setBackground(uiService.getStyleFactory().createPanelBackground());
-        serverContainer.add(scrollPane).expand().fill().pad(15);
+        serverContainer.add(scrollPane).expand().fill().pad(15 * scaleFactor);
 
-        root.add(serverContainer).expand().fill().pad(20).row();
+        root.add(serverContainer).expand().fill().pad(20 * scaleFactor).row();
 
+        
         Table buttonPanel = new Table(skin);
         buttonPanel.setBackground(uiService.getStyleFactory().createPanelBackground());
-        buttonPanel.pad(10);
+        buttonPanel.pad(10 * scaleFactor);
 
-        float buttonWidth = 150;
-        float buttonHeight = 50;
+        float buttonWidth = 150 * scaleFactor;
+        float buttonHeight = 50 * scaleFactor;
 
-        TextButton joinButton = createSimpleButton("Join Server", this::handleJoinServer);
-        TextButton addButton = createSimpleButton("Add Server", this::handleAddServer);
-        TextButton editButton = createSimpleButton("Edit Server", this::handleEditServer);
-        TextButton deleteButton = createSimpleButton("Delete Server", this::handleDeleteServer);
+        TextButton joinButton = createSimpleButton("Join Server", this::handleJoinServer, scaleFactor);
+        TextButton addButton = createSimpleButton("Add Server", this::handleAddServer, scaleFactor);
+        TextButton editButton = createSimpleButton("Edit Server", this::handleEditServer, scaleFactor);
+        TextButton deleteButton = createSimpleButton("Delete Server", this::handleDeleteServer, scaleFactor);
 
-        buttonPanel.add(joinButton).width(buttonWidth).height(buttonHeight).pad(10);
-        buttonPanel.add(addButton).width(buttonWidth).height(buttonHeight).pad(10);
-        buttonPanel.add(editButton).width(buttonWidth).height(buttonHeight).pad(10);
-        buttonPanel.add(deleteButton).width(buttonWidth).height(buttonHeight).pad(10);
+        buttonPanel.add(joinButton).width(buttonWidth).height(buttonHeight).pad(10 * scaleFactor);
+        buttonPanel.add(addButton).width(buttonWidth).height(buttonHeight).pad(10 * scaleFactor);
+        buttonPanel.add(editButton).width(buttonWidth).height(buttonHeight).pad(10 * scaleFactor);
+        buttonPanel.add(deleteButton).width(buttonWidth).height(buttonHeight).pad(10 * scaleFactor);
 
-        root.add(buttonPanel).expandX().fillX().padBottom(20);
+        root.add(buttonPanel).expandX().fillX().padBottom(20 * scaleFactor);
     }
 
     private void setBackground() {
@@ -161,7 +198,7 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
         stage.addActor(backgroundImage);
     }
 
-    private TextButton createSimpleButton(String text, Runnable action) {
+    private TextButton createSimpleButton(String text, Runnable action, float scaleFactor) {
         TextButton button = uiService.getStyleFactory().createGameButton(text, skin);
 
         final Color NORMAL_COLOR = Color.WHITE;
@@ -169,6 +206,7 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
         final Color PRESSED_COLOR = new Color(0.8f, 0.8f, 0.8f, 1f);
 
         button.setColor(NORMAL_COLOR);
+        button.getLabel().setFontScale(MathUtils.clamp(1f * scaleFactor, 0.8f, 2f));
 
         button.addListener(new InputListener() {
             boolean pressed = false;
@@ -212,6 +250,7 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
     }
 
     private void handleBack() {
+        
         screenManager.goBack();
     }
 
@@ -225,20 +264,22 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
     }
 
     private void showLoginDialog(ServerConnectionConfig config) {
+        
         try {
-            // Clean up any existing locks first
             connectionManager.releaseInstanceLock();
-
-            // Then try to acquire new lock
             if (!connectionManager.acquireInstanceLock()) {
-                uiService.getDialogFactory().showError("Connection Error",
-                    "Another instance of the game is already running on this machine.");
+                uiService.getDialogFactory().showError(
+                    "Connection Error",
+                    "Another instance of the game is already running on this machine."
+                );
                 return;
             }
         } catch (Exception e) {
             log.error("Lock error: {}", e.getMessage());
-            uiService.getDialogFactory().showError("Connection Error",
-                "Failed to establish connection lock. Please restart the game.");
+            uiService.getDialogFactory().showError(
+                "Connection Error",
+                "Failed to establish connection lock. Please restart the game."
+            );
             return;
         }
 
@@ -246,6 +287,7 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
             loginDialog.hide();
         }
 
+        
         if (!connectionManager.acquireInstanceLock()) {
             uiService.getDialogFactory().showError("Connection Error",
                 "Another instance of the game is already running on this machine.");
@@ -265,6 +307,7 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
 
         TextField usernameField = new TextField(prefillUsername, skin);
         usernameField.setMessageText("Username");
+
         TextField passwordField = new TextField(prefillPassword, skin);
         passwordField.setMessageText("Password");
         passwordField.setPasswordCharacter('*');
@@ -295,7 +338,8 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
                 String pass = passwordField.getText();
                 boolean rm = rememberMeCheck.isChecked();
                 if (user.isEmpty() || pass.isEmpty()) {
-                    uiService.getDialogFactory().showWarning("Invalid Input", "Username and password cannot be empty.");
+                    uiService.getDialogFactory().showWarning("Invalid Input",
+                        "Username and password cannot be empty.");
                     return;
                 }
 
@@ -319,13 +363,13 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
             }
         });
 
+        
         loginDialog.addListener((DialogCloseListener) () -> {
             if (!multiplayerClient.isConnected()) {
                 connectionManager.releaseInstanceLock();
             }
         });
 
-        // Existing button setup code remains the same
         createButton.addListener(new ChangeListener() {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
@@ -347,18 +391,6 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
         loginDialog.button(cancelButton);
 
         loginDialog.show(stage);
-    }
-
-    // Add cleanup on screen disposal
-    @Override
-    public void dispose() {
-        connectionManager.releaseInstanceLock();
-        if (stage != null) {
-            stage.dispose();
-        }
-        if (skin != null) {
-            skin.dispose();
-        }
     }
 
     private void showCreateAccountDialog(ServerConnectionConfig config) {
@@ -400,21 +432,21 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
                 String pass = passwordField.getText();
                 String conf = confirmField.getText();
                 if (user.isEmpty() || pass.isEmpty()) {
-                    uiService.getDialogFactory().showWarning("Invalid Input", "Username and password cannot be empty.");
+                    uiService.getDialogFactory().showWarning("Invalid Input",
+                        "Username and password cannot be empty.");
                     return;
                 }
                 if (!pass.equals(conf)) {
-                    uiService.getDialogFactory().showWarning("Mismatch", "Passwords do not match.");
+                    uiService.getDialogFactory().showWarning("Mismatch",
+                        "Passwords do not match.");
                     return;
                 }
 
                 createDialog.hide();
                 if (!multiplayerClient.isConnected()) {
-                    // Connect first, then send CreateUserRequest
                     multiplayerClient.setPendingCreateUserRequest(() -> multiplayerClient.createUser(user, pass));
                     connectToServer(config);
                 } else {
-                    // Already connected, send CreateUserRequest directly
                     multiplayerClient.createUser(user, pass);
                 }
             }
@@ -438,9 +470,7 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
         multiplayerClient.setLoginResponseListener(this);
         multiplayerClient.setCreateUserResponseListener(this);
 
-        // Set multiplayer mode before connecting
         worldService.setMultiplayerMode(true);
-
         multiplayerClient.connect(config.getServerIP(), config.getTcpPort(), config.getUdpPort());
     }
 
@@ -451,9 +481,7 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
                 connectingDialog.hide();
             }
 
-            // Check if we got disconnected
             if (!success && message != null && message.contains("Disconnected")) {
-                // Return to login screen
                 screenManager.showScreen(LoginScreen.class);
                 return;
             }
@@ -466,6 +494,7 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
                 playerService.setPlayerData(pd);
 
                 uiService.getDialogFactory().showSuccess("Connected", message);
+                screenManager.disposeScreen(GameScreen.class);
                 screenManager.showScreen(GameScreen.class);
             } else {
                 uiService.getDialogFactory().showError("Connection Failed", message);
@@ -473,6 +502,20 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
         });
     }
 
+    @Override
+    public void onCreateUserResponse(boolean success, String message) {
+        Gdx.app.postRunnable(() -> {
+            if (connectingDialog != null) {
+                connectingDialog.hide();
+            }
+
+            if (success) {
+                uiService.getDialogFactory().showSuccess("Account Created", message);
+            } else {
+                uiService.getDialogFactory().showError("Registration Failed", message);
+            }
+        });
+    }
 
     private void handleAddServer() {
         ServerConfigDialog dialog = new ServerConfigDialog(
@@ -494,7 +537,6 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
             uiService.getDialogFactory().showWarning("No Server Selected", "Please select a server to edit.");
             return;
         }
-
         ServerConfigDialog dialog = new ServerConfigDialog(
             skin,
             uiService.getDialogFactory(),
@@ -537,7 +579,8 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
         stage.addListener(new InputListener() {
             @Override
             public boolean keyDown(InputEvent event, int keycode) {
-                if (keycode == Input.Keys.ESCAPE) {
+                
+                if (keycode == Input.Keys.ESCAPE || keycode == Input.Keys.BACK) {
                     handleBack();
                     return true;
                 }
@@ -559,16 +602,20 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
     @Override
     public void resize(int width, int height) {
         stage.getViewport().update(width, height, true);
-        root.invalidateHierarchy();
-        root.layout();
+        if (root != null) {
+            root.invalidateHierarchy();
+            root.layout();
+        }
     }
 
     @Override
     public void pause() {
+        
     }
 
     @Override
     public void resume() {
+        
     }
 
     @Override
@@ -578,19 +625,13 @@ public class LoginScreen implements Screen, MultiplayerClient.LoginResponseListe
     }
 
     @Override
-    public void onCreateUserResponse(boolean success, String message) {
-        Gdx.app.postRunnable(() -> {
-                if (connectingDialog != null) {
-                    connectingDialog.hide();
-                }
-
-                if (success) {
-                    uiService.getDialogFactory().showSuccess("Account Created", message);
-                } else {
-                    uiService.getDialogFactory().showError("Registration Failed", message);
-                }
-            }
-        );
+    public void dispose() {
+        connectionManager.releaseInstanceLock();
+        if (stage != null) {
+            stage.dispose();
+        }
+        if (skin != null) {
+            skin.dispose();
+        }
     }
-
 }

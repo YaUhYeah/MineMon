@@ -7,17 +7,16 @@ import com.badlogic.gdx.math.MathUtils;
 import io.github.minemon.audio.model.SoundEffect;
 import io.github.minemon.audio.model.WeatherSoundEffect;
 import io.github.minemon.audio.service.AudioService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 
 @Service
+@Slf4j
 @Primary
 public class AudioServiceImpl implements AudioService {
-    private static final Logger logger = LoggerFactory.getLogger(AudioServiceImpl.class);
 
     private final Map<SoundEffect, Sound> sounds = new EnumMap<>(SoundEffect.class);
 
@@ -56,7 +55,7 @@ public class AudioServiceImpl implements AudioService {
                 Sound sound = Gdx.audio.newSound(Gdx.files.internal("" + effect.getPath()));
                 sounds.put(effect, sound);
             } catch (Exception e) {
-                logger.error("Failed to load sound: {}", effect.getPath(), e);
+                log.error("Failed to load sound: {}", effect.getPath(), e);
             }
         }
 
@@ -71,7 +70,7 @@ public class AudioServiceImpl implements AudioService {
                     Sound wSound = Gdx.audio.newSound(Gdx.files.internal(path));
                     weatherSounds.put(wEffect, wSound);
                 } catch (Exception e) {
-                    logger.error("Failed to load weather sound: {}", path, e);
+                    log.error("Failed to load weather sound: {}", path, e);
                 }
             } else {
 
@@ -81,7 +80,7 @@ public class AudioServiceImpl implements AudioService {
                     wMusic.setVolume(0f);
                     weatherLoops.put(wEffect, wMusic);
                 } catch (Exception e) {
-                    logger.error("Failed to load weather loop: {}", path, e);
+                    log.error("Failed to load weather loop: {}", path, e);
                 }
             }
         }
@@ -103,30 +102,75 @@ public class AudioServiceImpl implements AudioService {
                 music.setVolume(musicVolume * masterVolume);
                 menuMusicList.add(music);
             } catch (Exception e) {
-                logger.error("Failed to load menu music: {}", path, e);
+                log.error("Failed to load menu music: {}", path, e);
             }
         }
     }
-
     @Override
     public void playMenuMusic() {
         if (!musicEnabled || menuMusicList == null || menuMusicList.isEmpty()) {
             return;
         }
 
-        if (currentMusic == null || !currentMusic.isPlaying()) {
-            stopCurrentMusic();
+        try {
+            stopCurrentMusic(); 
+
             int index = MathUtils.random(menuMusicList.size() - 1);
             currentMusic = menuMusicList.get(index);
-            currentMusic.setVolume(0f);
-            currentMusic.setLooping(false);
-            currentMusic.play();
-            isFadingInMusic = true;
-            fadeInMusicTimer = MUSIC_FADE_DURATION;
-            setMusicCompletionListenerForMenu();
+
+            if (currentMusic != null) {
+                currentMusic.setVolume(0f);
+                currentMusic.setLooping(false);
+                currentMusic.play();
+
+                
+                isFadingInMusic = true;
+                fadeInMusicTimer = MUSIC_FADE_DURATION;
+
+                setMusicCompletionListenerForMenu();
+                log.info("Started playing menu music track {}", index);
+            }
+        } catch (Exception e) {
+            log.error("Failed to play menu music", e);
         }
     }
 
+    private void stopAllSounds() {
+        
+        for (Sound sound : sounds.values()) {
+            if (sound != null) {
+                sound.stop();
+                sound.dispose();
+            }
+        }
+        sounds.clear();
+
+        
+        for (Sound sound : weatherSounds.values()) {
+            if (sound != null) {
+                sound.stop();
+                sound.dispose();
+            }
+        }
+        weatherSounds.clear();
+
+        
+        if (currentMusic != null) {
+            currentMusic.stop();
+            currentMusic.dispose();
+            currentMusic = null;
+        }
+
+        if (menuMusicList != null) {
+            for (Music music : menuMusicList) {
+                if (music != null) {
+                    music.stop();
+                    music.dispose();
+                }
+            }
+            menuMusicList.clear();
+        }
+    }
     private void setMusicCompletionListenerForMenu() {
         if (currentMusic != null) {
             currentMusic.setOnCompletionListener(music -> playMenuMusic());
@@ -194,7 +238,7 @@ public class AudioServiceImpl implements AudioService {
             long id = wSound.play(volume * soundVolume * masterVolume);
             wSound.setPitch(id, pitch);
         } else {
-            logger.debug("Weather sound {} not found or not loaded as Sound.", effect);
+            log.debug("Weather sound {} not found or not loaded as Sound.", effect);
         }
     }
 
@@ -214,7 +258,7 @@ public class AudioServiceImpl implements AudioService {
                 loop.pause();
             }
         } else {
-            logger.debug("Weather loop {} not found or not loaded as Music.", effect);
+            log.debug("Weather loop {} not found or not loaded as Music.", effect);
         }
     }
 
@@ -309,6 +353,7 @@ public class AudioServiceImpl implements AudioService {
 
     @Override
     public void dispose() {
+        stopAllSounds();
         for (Sound sound : sounds.values()) {
             sound.dispose();
         }

@@ -23,26 +23,23 @@ public class ObjectRenderState {
     @Autowired
     private WorldService worldService;
 
-    /**
-     * Render a "full" texture for the given WorldObject,
-     * automatically incrementing its alpha from 0..1.
-     */
+    
     public void renderObject(SpriteBatch batch, WorldObject obj, TextureRegion texture, float delta) {
         if (texture == null) return;
 
-        // Cache the object for later lookup
+        
         objectCache.put(obj.getId(), obj);
 
-        // Get or initialize fade state
+        
         float fadeState = objectFadeStates.computeIfAbsent(obj.getId(), k -> 0f);
 
-        // Update fade state
+        
         if (fadeState < 1.0f) {
             fadeState = Math.min(1.0f, fadeState + (delta / FADE_DURATION));
             objectFadeStates.put(obj.getId(), fadeState);
         }
 
-        // Apply fade state
+        
         Color c = batch.getColor();
         batch.setColor(c.r, c.g, c.b, fadeState);
 
@@ -55,14 +52,11 @@ public class ObjectRenderState {
 
         batch.draw(texture, x, y, width, height);
 
-        // Restore color
+        
         batch.setColor(c.r, c.g, c.b, 1f);
     }
 
-    /**
-     * Overload for partial textures (e.g. top or base of a tree).
-     * Lets you define the exact region & draw location/size.
-     */
+    
     public void renderObject(
         SpriteBatch batch, WorldObject obj,
         TextureRegion texture, float delta,
@@ -71,7 +65,7 @@ public class ObjectRenderState {
     ) {
         if (texture == null) return;
 
-        // Same alpha logic
+        
         objectCache.put(obj.getId(), obj);
         float fadeState = objectFadeStates.computeIfAbsent(obj.getId(), k -> 0f);
         if (fadeState < 1.0f) {
@@ -87,11 +81,9 @@ public class ObjectRenderState {
         batch.setColor(c.r, c.g, c.b, 1f);
     }
 
-    /**
-     * Periodically call this to remove objects that are far outside the view.
-     */
+    
     public void clearInvisibleObjects(Rectangle viewBounds) {
-        // Expand view bounds slightly to prevent premature clearing
+        
         Rectangle expandedBounds = new Rectangle(
             viewBounds.x - 64,
             viewBounds.y - 64,
@@ -119,13 +111,13 @@ public class ObjectRenderState {
     }
 
     private WorldObject getObjectById(String id) {
-        // First check cache
+        
         WorldObject cached = objectCache.get(id);
         if (cached != null) {
             return cached;
         }
 
-        // If not in cache, search visible objects
+        
         Rectangle searchBounds = calculateSearchBounds();
         List<WorldObject> visibleObjects = worldService.getVisibleObjects(searchBounds);
 

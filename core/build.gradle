@@ -1,58 +1,57 @@
 plugins {
   id 'java-library'
-  // Lombok plugin if you use Lombok
   id 'io.freefair.lombok' version '8.3'
-  // You do *not* need to apply the Spring Boot plugin here; just the dependencies are enough.
 }
 
 def gdxVersion = "1.13.0"
 def graalHelperVersion = "0.1.0"
 def enableGraalNative = 'false'
+def springVersion = "3.1.4"
 
 java {
   sourceCompatibility = JavaVersion.VERSION_17
   targetCompatibility = JavaVersion.VERSION_17
 }
 
-repositories {
-  mavenCentral()
-}
 
 dependencies {
-  // --- LibGDX core and networking
+  // LibGDX Core - Use api so Android module can access
   api "com.badlogicgames.gdx:gdx:$gdxVersion"
+
+  // Networking - Implementation since it's internal to core
   implementation "com.esotericsoftware:kryonet:2.22.0-RC1"
+
+  // Database - Keep as implementation
   implementation 'com.h2database:h2:2.2.224'
 
-  // --- Basic Spring (Context, Beans, Boot, Logging, etc.)
-  implementation "org.springframework.boot:spring-boot-starter:3.1.4"
+  // Spring Core - Keep as implementation to not leak to Android
+  implementation "org.springframework:spring-core:$springVersion"
+  implementation "org.springframework:spring-context:$springVersion"
+  implementation "org.springframework:spring-beans:$springVersion"
+  implementation "org.springframework.boot:spring-boot-autoconfigure:$springVersion"
 
-  // --- Spring Data JPA for @Entity, @Table, @Id, JpaRepository
-  implementation "org.springframework.boot:spring-boot-starter-data-jpa:3.1.4"
+  // Logging - Make API so Android can use it
+  api "org.slf4j:slf4j-api:2.0.9"
+  implementation "ch.qos.logback:logback-classic:1.4.11"
 
-  // If you only need the JPA API itself (rare, because spring-boot-starter-data-jpa includes it):
-  // implementation "jakarta.persistence:jakarta.persistence-api:3.1.0"
+  // JPA - Implementation since it's only used in core
+  implementation "org.springframework.boot:spring-boot-starter-data-jpa:$springVersion"
 
-  // --- For bcrypt hashing in AuthService
-  // This is included by spring-boot-starter-security, but if you want only crypto:
-  // implementation "org.springframework.security:spring-security-crypto:6.1.4"
-  // OR full security (often needed):
+  // Annotations - Make API so Android can use them
+  api "jakarta.annotation:jakarta.annotation-api:2.1.1"
 
-  // --- If you use @ConfigurationProperties
-  annotationProcessor "org.springframework.boot:spring-boot-configuration-processor:3.1.4"
+  // Lombok - API since we use it across modules
+  api "org.projectlombok:lombok:1.18.30"
+  annotationProcessor "org.projectlombok:lombok:1.18.30"
 
-  // --- For @PostConstruct (Jakarta Annotations)
-  implementation "jakarta.annotation:jakarta.annotation-api:2.1.1"
+  // Configuration Processor
+  annotationProcessor "org.springframework.boot:spring-boot-configuration-processor:$springVersion"
 
-  // If building with Graal:
   if (enableGraalNative == 'true') {
     implementation "io.github.berstanio:gdx-svmhelper-annotations:$graalHelperVersion"
   }
 }
 
-tasks.compileJava {
-  options.encoding = 'UTF-8'
-}
-tasks.compileTestJava {
+tasks.withType(JavaCompile) {
   options.encoding = 'UTF-8'
 }

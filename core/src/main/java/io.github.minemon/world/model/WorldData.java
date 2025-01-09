@@ -21,5 +21,5 @@ public class WorldData {
     @Setter
     private long lastPlayed;
     @Setter
-    private long playedTime; 
+    private long playedTime;
 }

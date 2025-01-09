@@ -53,14 +53,14 @@ public class ChunkCacheManager {
     private WorldService worldService;
 
     public void cacheChunk(String clientId, int chunkX, int chunkY) {
-        // Only cache on server or in singleplayer
+        
         if (!isServer && worldService.isMultiplayerMode()) {
             return;
         }
         clientChunks.computeIfAbsent(clientId, k -> new ConcurrentHashMap<>())
                 .put(new ChunkKey(chunkX, chunkY), System.currentTimeMillis());
 
-        // If cache too large, remove oldest entries
+        
         Map<ChunkKey, Long> clientCache = clientChunks.get(clientId);
         if (clientCache.size() > maxChunksPerClient) {
             List<ChunkKey> oldestChunks = clientCache.entrySet().stream()

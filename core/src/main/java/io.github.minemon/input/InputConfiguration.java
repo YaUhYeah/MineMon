@@ -16,11 +16,9 @@ public class InputConfiguration {
     private Map<Integer, PlayerDirection> movementKeys = new HashMap<>();
     private Map<String, Integer> actionKeys = new HashMap<>();
     private int runKey = Input.Keys.Z;
-    public static final int HOTBAR_START = Input.Keys.NUM_1;
-    public static final int HOTBAR_END = Input.Keys.NUM_9;
 
     public InputConfiguration() {
-        // Movement keys
+
         movementKeys.put(Input.Keys.W, PlayerDirection.UP);
         movementKeys.put(Input.Keys.UP, PlayerDirection.UP);
         movementKeys.put(Input.Keys.S, PlayerDirection.DOWN);
@@ -29,8 +27,9 @@ public class InputConfiguration {
         movementKeys.put(Input.Keys.LEFT, PlayerDirection.LEFT);
         movementKeys.put(Input.Keys.D, PlayerDirection.RIGHT);
         movementKeys.put(Input.Keys.RIGHT, PlayerDirection.RIGHT);
+        actionKeys.put("PICKUP", Input.Keys.X);
 
-        // Action keys
+
         actionKeys.put("INVENTORY", Input.Keys.E);
     }
 

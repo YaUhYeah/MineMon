@@ -17,12 +17,16 @@ import io.github.minemon.core.service.SettingsService;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.world.service.WorldService;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
-
+@Slf4j
 @Component
+@Scope("prototype")
 @RequiredArgsConstructor
 public class ModeSelectionScreen implements Screen {
     private final AudioService audioService;
@@ -31,25 +35,120 @@ public class ModeSelectionScreen implements Screen {
     private final BackgroundService backgroundAnimation;
     @Autowired
     @Lazy
+    @Setter
     private MultiplayerClient multiplayerClient;
     @Autowired
     @Lazy
+    @Setter
     private WorldService worldService;
     private Stage stage;
     private Skin skin;
     private Window settingsWindow;
+    private boolean initialized = false;
 
     @Override
     public void show() {
-        audioService.playMenuMusic();
-        backgroundAnimation.initialize();
+        try {
+            log.info("ModeSelectionScreen show() called");
+            
+            ensureInitialized();
 
-        stage = new Stage(new ScreenViewport());
-        Gdx.input.setInputProcessor(stage);
-        skin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
+            
+            if (stage != null) {
+                Gdx.input.setInputProcessor(stage);
+                log.info("Stage set as input processor");
+            }
 
-        createMainMenu();
-        createSettingsWindow();
+            
+            backgroundAnimation.initialize();
+
+            
+            Gdx.app.postRunnable(() -> {
+                try {
+                    audioService.playMenuMusic();
+                } catch (Exception e) {
+                    log.error("Failed to play menu music", e);
+                }
+            });
+
+        } catch (Exception e) {
+            log.error("Error in show(): {}", e.getMessage(), e);
+        }
+    }
+
+    private void ensureInitialized() {
+        if (!initialized) {
+            try {
+                log.info("Starting ModeSelectionScreen initialization");
+
+                
+                String skinPath = "Skins/uiskin.json";
+                if (!Gdx.files.internal(skinPath).exists()) {
+                    log.error("UI skin not found at: {}", skinPath);
+                    throw new RuntimeException("Required UI skin missing: " + skinPath);
+                }
+
+                
+                ScreenViewport viewport = new ScreenViewport();
+                stage = new Stage(viewport);
+
+                
+                try {
+                    skin = new Skin(Gdx.files.internal(skinPath));
+                    log.info("UI skin loaded successfully");
+                } catch (Exception e) {
+                    log.error("Failed to load UI skin", e);
+                    throw e;
+                }
+
+                createMainMenu();
+                createSettingsWindow();
+
+                initialized = true;
+                log.info("ModeSelectionScreen initialized successfully");
+
+            } catch (Exception e) {
+                log.error("Failed to initialize ModeSelectionScreen: {}", e.getMessage(), e);
+                throw new RuntimeException("Screen initialization failed", e);
+            }
+        }
+    }
+
+    @Override
+    public void render(float delta) {
+        try {
+            if (!initialized) {
+                ensureInitialized();
+            }
+            
+            Gdx.gl.glClearColor(0.2f, 0.2f, 0.2f, 1);
+            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+            backgroundAnimation.render(false);
+            if (stage != null) {
+                stage.act(delta);
+                stage.draw();
+            }
+
+        } catch (Exception e) {
+            log.error("Error in render(): {}", e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void hide() {
+        audioService.stopMenuMusic();
+        Gdx.input.setInputProcessor(null);
+        cleanup();
+    }
+
+    @Override
+    public void dispose() {
+        Gdx.input.setInputProcessor(null);
+        cleanup();
+        if (backgroundAnimation != null) {
+            backgroundAnimation.dispose();
+        }
     }
 
     private void createMainMenu() {
@@ -148,13 +247,12 @@ public class ModeSelectionScreen implements Screen {
             @Override
             public void changed(ChangeListener.ChangeEvent event, Actor actor) {
                 float newVolume = musicSlider.getValue();
-                // 1. Update in SettingsService
+                
                 settingsService.updateMusicVolume(newVolume);
-                // 2. Also update the AudioService so the in-game volume changes
+                
                 audioService.setMusicVolume(newVolume);
             }
         });
-
 
 
         Label soundLabel = new Label("Sound Volume:", skin);
@@ -168,7 +266,6 @@ public class ModeSelectionScreen implements Screen {
                 audioService.setSoundVolume(newVolume);
             }
         });
-
 
 
         CheckBox vsyncCheck = new CheckBox(" VSync", skin);
@@ -202,8 +299,8 @@ public class ModeSelectionScreen implements Screen {
         settingsWindow.add(settingsTable);
         settingsWindow.pack();
         settingsWindow.setPosition(
-                (stage.getWidth() - settingsWindow.getWidth()) / 2,
-                (stage.getHeight() - settingsWindow.getHeight()) / 2
+            (stage.getWidth() - settingsWindow.getWidth()) / 2,
+            (stage.getHeight() - settingsWindow.getHeight()) / 2
         );
 
         stage.addActor(settingsWindow);
@@ -213,42 +310,43 @@ public class ModeSelectionScreen implements Screen {
         settingsWindow.setVisible(!settingsWindow.isVisible());
     }
 
-    @Override
-    public void render(float delta) {
-        Gdx.gl.glClearColor(0.1f, 0.1f, 0.1f, 1);
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        backgroundAnimation.render(false);
-
-        stage.act(delta);
-        stage.draw();
-        audioService.update(delta);
-    }
 
     @Override
     public void resize(int width, int height) {
-        stage.getViewport().update(width, height, true);
-        settingsWindow.setPosition(
-                (width - settingsWindow.getWidth()) / 2,
-                (height - settingsWindow.getHeight()) / 2
-        );
+        if (stage != null) {
+            stage.getViewport().update(width, height, true);
+            if (settingsWindow != null) {
+                settingsWindow.setPosition(
+                    (width - settingsWindow.getWidth()) / 2,
+                    (height - settingsWindow.getHeight()) / 2
+                );
+            }
+        }
+    }
+
+    private void cleanup() {
+        if (stage != null) {
+            stage.dispose();
+            stage = null;
+        }
+        if (skin != null) {
+            skin.dispose();
+            skin = null;
+        }
+        initialized = false;
+        settingsWindow = null;
+    }
+
+
+
+    @Override
+    public void pause() {
     }
 
     @Override
-    public void pause() {}
-
-    @Override
-    public void resume() {}
-
-    @Override
-    public void hide() {
-        audioService.stopMenuMusic();
+    public void resume() {
+        initialized = false;
     }
 
-    @Override
-    public void dispose() {
-        stage.dispose();
-        skin.dispose();
-        backgroundAnimation.dispose();
-    }
 }

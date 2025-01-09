@@ -36,8 +36,8 @@ import java.util.concurrent.*;
 public class MultiplayerServerImpl implements MultiplayerServer {
 
     private static final int MAX_CONCURRENT_CHUNK_REQUESTS = 4;
-    private static final long CHUNK_REQUEST_TIMEOUT = 5000; // 5 seconds
-    private static final long CHUNK_SEND_DELAY = 50L; // ms between batches
+    private static final long CHUNK_REQUEST_TIMEOUT = 5000; 
+    private static final long CHUNK_SEND_DELAY = 50L; 
     private static final int MAX_CONCURRENT_CHUNK_GEN = 8;
     private final MultiplayerService multiplayerService;
     private final EventBus eventBus;
@@ -106,7 +106,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
 
     private void handleLogin(Connection connection, NetworkProtocol.LoginRequest req) {
         try {
-            // Check if user is already logged in
+            
             if (activeUsers.containsKey(req.getUsername())) {
                 NetworkProtocol.LoginResponse resp = new NetworkProtocol.LoginResponse();
                 resp.setSuccess(false);
@@ -127,7 +127,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
                 return;
             }
 
-            // Store connection for this user
+            
             activeUsers.put(req.getUsername(), connection);
             connectionUserMap.put(connection.getID(), req.getUsername());
             multiplayerService.playerConnected(req.getUsername());
@@ -158,7 +158,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
     public void handleDisconnection(Connection connection) {
         String username = connectionUserMap.remove(connection.getID());
         if (username != null) {
-            activeUsers.remove(username); // Remove from active users
+            activeUsers.remove(username); 
             multiplayerService.playerDisconnected(username);
             eventBus.fireEvent(new PlayerLeaveEvent(username));
             log.info("Player {} disconnected", username);
@@ -266,22 +266,22 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         ChunkKey key = new ChunkKey(req.getChunkX(), req.getChunkY());
 
         synchronized (chunkLock) {
-            // Add this connection to pending requests for this chunk
+            
             pendingChunkRequests.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet())
                 .add(connection);
 
-            // Submit chunk generation task if not already in progress
+            
             if (pendingChunkRequests.get(key).size() == 1) {
                 chunkGenExecutor.submit(() -> {
                     try {
-                        // Generate or load chunk
+                        
                         ChunkData chunk = worldService.loadOrGenerateChunk(req.getChunkX(), req.getChunkY());
                         if (chunk == null) {
                             log.error("Failed to generate chunk {},{}", req.getChunkX(), req.getChunkY());
                             return;
                         }
 
-                        // Send chunk to all waiting connections
+                        
                         synchronized (chunkLock) {
                             Set<Connection> waitingConnections = pendingChunkRequests.get(key);
                             if (waitingConnections != null) {
@@ -294,7 +294,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
                                 for (Connection conn : waitingConnections) {
                                     conn.sendTCP(response);
 
-                                    // Send acknowledgment
+                                    
                                     NetworkProtocol.ChunkRequestAck ack = new NetworkProtocol.ChunkRequestAck();
                                     ack.setChunkX(req.getChunkX());
                                     ack.setChunkY(req.getChunkY());
@@ -327,34 +327,34 @@ public class MultiplayerServerImpl implements MultiplayerServer {
     }
 
     private boolean isLargeChunk(ChunkData chunk) {
-        // Check if chunk data size would exceed safe network packet size
+        
         int estimatedSize = estimateChunkSize(chunk);
-        return false; // 32KB threshold
+        return false; 
     }
 
     private int estimateChunkSize(ChunkData chunk) {
-        // Base size for chunk metadata
-        int size = 16; // Basic overhead
+        
+        int size = 16; 
 
-        // Tiles size (16x16 grid of ints)
+        
         if (chunk.getTiles() != null) {
-            size += 16 * 16 * 4; // Each int is 4 bytes
+            size += 16 * 16 * 4; 
         }
 
-        // Objects size estimation
+        
         if (chunk.getObjects() != null) {
             for (WorldObject obj : chunk.getObjects()) {
-                // Base object overhead
-                size += 32; // Rough estimate for object metadata
+                
+                size += 32; 
 
-                // Object ID (UUID string)
+                
                 if (obj.getId() != null) {
-                    size += 36; // UUID string length
+                    size += 36; 
                 }
 
-                // Type name
+                
                 if (obj.getType() != null) {
-                    size += obj.getType().name().length() * 2; // String chars
+                    size += obj.getType().name().length() * 2; 
                 }
             }
         }
@@ -363,7 +363,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
     }
 
     private void sendChunkInParts(Connection connection, ChunkData chunk) {
-        // Send tiles first
+        
         NetworkProtocol.ChunkData tilesPacket = new NetworkProtocol.ChunkData();
         tilesPacket.setChunkX(chunk.getChunkX());
         tilesPacket.setChunkY(chunk.getChunkY());
@@ -373,7 +373,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         tilesPacket.setTotalParts(2);
         connection.sendTCP(tilesPacket);
 
-        // Brief delay to prevent network congestion
+        
         try {
             Thread.sleep(CHUNK_SEND_DELAY);
         } catch (InterruptedException e) {
@@ -381,7 +381,7 @@ public class MultiplayerServerImpl implements MultiplayerServer {
             return;
         }
 
-        // Send objects
+        
         NetworkProtocol.ChunkData objectsPacket = new NetworkProtocol.ChunkData();
         objectsPacket.setChunkX(chunk.getChunkX());
         objectsPacket.setChunkY(chunk.getChunkY());
@@ -435,16 +435,16 @@ public class MultiplayerServerImpl implements MultiplayerServer {
         log.info("Shutting down server...");
 
         try {
-            // Send shutdown notice to all clients
+            
             NetworkProtocol.ServerShutdownNotice notice = new NetworkProtocol.ServerShutdownNotice();
             notice.setMessage("Server is shutting down...");
             notice.setReason(NetworkProtocol.ServerShutdownNotice.ShutdownReason.NORMAL_SHUTDOWN);
             broadcast(notice);
 
-            // Wait briefly for notice to be sent
+            
             Thread.sleep(1000);
 
-            // Close all connections
+            
             if (server != null) {
                 for (Connection conn : server.getConnections()) {
                     conn.close();
@@ -453,13 +453,13 @@ public class MultiplayerServerImpl implements MultiplayerServer {
                 server.close();
             }
 
-            // Shutdown chunk executor
+            
             chunkExecutor.shutdown();
             if (!chunkExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
                 chunkExecutor.shutdownNow();
             }
 
-            // Clear all maps
+            
             pendingChunkRequests.clear();
             chunkRequestQueue.clear();
             connectionUserMap.clear();

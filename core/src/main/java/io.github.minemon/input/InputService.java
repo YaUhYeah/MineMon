@@ -1,58 +1,69 @@
 package io.github.minemon.input;
 
 import com.badlogic.gdx.InputAdapter;
+import com.badlogic.gdx.math.Rectangle;
 import io.github.minemon.chat.service.ChatService;
 import io.github.minemon.core.screen.InventoryScreen;
+import io.github.minemon.inventory.service.InventoryService;
+import io.github.minemon.inventory.service.impl.ItemPickupHandler;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.player.model.PlayerDirection;
 import io.github.minemon.player.service.PlayerService;
+import io.github.minemon.world.model.ObjectType;
+import io.github.minemon.world.model.WorldObject;
+import io.github.minemon.world.service.WorldObjectManager;
+import io.github.minemon.world.service.WorldService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class InputService extends InputAdapter {
-
+    private static final float TILE_SIZE = 32f;
     private final InputConfiguration inputConfig;
-
     private boolean upPressed, downPressed, leftPressed, rightPressed;
     private boolean runPressed;
-
     private PlayerDirection lastPressedDirection = null;
-    @Autowired
-    @Lazy
-    private ChatService chatService;
-    @Autowired
-    @Lazy
-    private MultiplayerClient multiplayerClient;
-    @Autowired
-    @Lazy
-    private PlayerService playerService;
-    @Autowired
-    @Lazy
-    private InventoryScreen inventoryScreen;
+    private boolean isActive = false;
+    @Autowired @Lazy private ItemPickupHandler itemPickupHandler;
 
-    /**
-     * Returns the current direction, favoring the last pressed direction if multiple are pressed.
-     */
+    @Autowired @Lazy private ChatService chatService;
+    @Autowired @Lazy private MultiplayerClient multiplayerClient;
+    @Autowired @Lazy private PlayerService playerService;
+    @Autowired @Lazy private InventoryScreen inventoryScreen;
+    @Autowired @Lazy private WorldService worldService;
+    @Autowired @Lazy private WorldObjectManager worldObjectManager;
+    @Autowired @Lazy private InventoryService inventoryService;
+
+    public void activate() {
+        isActive = true;
+        resetKeys();
+    }
+
+    public void deactivate() {
+        isActive = false;
+        resetKeys();
+    }
+
     public PlayerDirection getCurrentDirection() {
+
+        if (!isActive || inventoryScreen.isVisible()) {
+            return null;
+        }
+
         if (lastPressedDirection != null) {
             switch (lastPressedDirection) {
-                case UP -> {
-                    if (upPressed) return PlayerDirection.UP;
-                }
-                case DOWN -> {
-                    if (downPressed) return PlayerDirection.DOWN;
-                }
-                case LEFT -> {
-                    if (leftPressed) return PlayerDirection.LEFT;
-                }
-                case RIGHT -> {
-                    if (rightPressed) return PlayerDirection.RIGHT;
-                }
+                case UP -> { if (upPressed) return PlayerDirection.UP; }
+                case DOWN -> { if (downPressed) return PlayerDirection.DOWN; }
+                case LEFT -> { if (leftPressed) return PlayerDirection.LEFT; }
+                case RIGHT -> { if (rightPressed) return PlayerDirection.RIGHT; }
             }
         }
         if (upPressed) return PlayerDirection.UP;
@@ -63,18 +74,43 @@ public class InputService extends InputAdapter {
     }
 
     public boolean isRunning() {
-        return runPressed;
+
+        return isActive && !inventoryScreen.isVisible() && runPressed;
     }
 
+    public void resetKeys() {
+        upPressed = false;
+        downPressed = false;
+        leftPressed = false;
+        rightPressed = false;
+        runPressed = false;
+        lastPressedDirection = null;
+    }
     @Override
     public boolean keyDown(int keycode) {
-        if (chatService.isActive()) {
+        if (!isActive || chatService.isActive()) {
             return false;
         }
-        if (keycode == inputConfig.getActionKey("INVENTORY")) {
-            inventoryScreen.toggleVisibility();
+        if (keycode == inputConfig.getActionKey("PICKUP")) {
+            attemptPickup();
             return true;
         }
+
+        if (keycode == inputConfig.getActionKey("INVENTORY")) {
+
+            inventoryScreen.toggleVisibility();
+
+            if (inventoryScreen.isVisible()) {
+                resetKeys();
+            }
+            return true;
+        }
+
+
+        if (inventoryScreen.isVisible()) {
+            return false;
+        }
+
         PlayerDirection dir = inputConfig.getDirectionForKey(keycode);
         if (dir != null) {
             switch (dir) {
@@ -95,8 +131,34 @@ public class InputService extends InputAdapter {
         return false;
     }
 
+    private void attemptPickup() {
+        PlayerData pd = playerService.getPlayerData();
+        if (pd == null) return;
+
+        float playerX = pd.getX() * TILE_SIZE;
+        float playerY = pd.getY() * TILE_SIZE;
+
+        Rectangle searchArea = new Rectangle(
+            playerX - TILE_SIZE * 2,
+            playerY - TILE_SIZE * 2,
+            TILE_SIZE * 4,
+            TILE_SIZE * 4
+        );
+
+        List<WorldObject> nearbyObjects = worldService.getVisibleObjects(searchArea);
+        for (WorldObject obj : nearbyObjects) {
+            if (obj.getType() == ObjectType.POKEBALL) {
+                if (itemPickupHandler.attemptPickup(pd, obj)) {
+                    break;
+                }
+            }
+        }
+    }
     @Override
     public boolean keyUp(int keycode) {
+        if (!isActive) return false;
+
+
         PlayerDirection dir = inputConfig.getDirectionForKey(keycode);
         if (dir != null) {
             switch (dir) {
@@ -112,17 +174,17 @@ public class InputService extends InputAdapter {
             runPressed = false;
         }
 
+
         if (!upPressed && !downPressed && !leftPressed && !rightPressed) {
             PlayerData pd = playerService.getPlayerData();
-            float x = pd.getX();
-            float y = pd.getY();
-            String dirName = pd.getDirection().name().toLowerCase();
-
-            // Send "stop" => running = false, moving = false
-            multiplayerClient.sendPlayerMove(x, y, false, false, dirName);
+            if (pd != null) {
+                float x = pd.getX();
+                float y = pd.getY();
+                String dirName = pd.getDirection().name().toLowerCase();
+                multiplayerClient.sendPlayerMove(x, y, false, false, dirName);
+            }
         }
 
         return true;
     }
-
 }

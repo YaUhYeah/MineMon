@@ -13,9 +13,10 @@ import io.github.minemon.core.service.ScreenManager;
 import io.github.minemon.core.service.SettingsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
-
 @Component
+@Scope("prototype")
 @RequiredArgsConstructor
 public class SettingsScreen implements Screen {
     private final ScreenManager screenManager;
@@ -121,10 +122,10 @@ public class SettingsScreen implements Screen {
             @Override
             public void changed(ChangeEvent event, Actor actor) {
                 float newValue = slider.getValue();
-                // 1) Update SettingsService
+                
                 listener.onVolumeChanged(newValue);
 
-                // 2) Also update the AudioService instantly
+                
                 if ("Music Volume".equals(label)) {
                     audioService.setMusicVolume(newValue);
                 } else if ("Sound Volume".equals(label)) {

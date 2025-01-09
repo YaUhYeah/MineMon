@@ -1,31 +1,34 @@
 package io.github.minemon.core.service.impl;
 
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.files.FileHandle;
 import io.github.minemon.core.service.FileAccessService;
-import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
-
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 
 @Service
 public class LocalFileAccessService implements FileAccessService {
 
     @Override
     public boolean exists(String path) {
-        Path p = Paths.get(path);
-        return Files.exists(p);
+        if (Gdx.files == null) {
+            throw new IllegalStateException("LibGDX not initialized");
+        }
+        return Gdx.files.internal(path).exists();
     }
 
     @Override
     public String readFile(String path) {
         try {
-            Path p = Paths.get(path);
-            if (!Files.exists(p)) {
+            if (Gdx.files == null) {
+                throw new IllegalStateException("LibGDX not initialized");
+            }
+
+            FileHandle fileHandle = Gdx.files.internal(path);
+            if (!fileHandle.exists()) {
                 throw new RuntimeException("File not found: " + path);
             }
-            return Files.readString(p, StandardCharsets.UTF_8);
+
+            return fileHandle.readString();
         } catch (Exception e) {
             throw new RuntimeException("Error reading file " + path + ": " + e.getMessage(), e);
         }
@@ -34,10 +37,25 @@ public class LocalFileAccessService implements FileAccessService {
     @Override
     public void writeFile(String path, String content) {
         try {
-            Path p = Paths.get(path);
-            Files.writeString(p, content, StandardCharsets.UTF_8);
+            if (Gdx.files == null) {
+                throw new IllegalStateException("LibGDX not initialized");
+            }
+
+            
+            FileHandle fileHandle = Gdx.files.local(path);
+            fileHandle.writeString(content, false);
         } catch (Exception e) {
             throw new RuntimeException("Error writing file " + path + ": " + e.getMessage(), e);
+        }
+    }
+
+    
+    private boolean isAndroid() {
+        try {
+            Class.forName("android.os.Build");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
         }
     }
 }

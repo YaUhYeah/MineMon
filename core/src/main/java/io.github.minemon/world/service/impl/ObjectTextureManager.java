@@ -33,7 +33,7 @@ public class ObjectTextureManager {
 
         atlas = new TextureAtlas(Gdx.files.internal(ATLAS_PATH));
 
-        // Set the filter for every texture inside the atlas
+        
         for (TextureAtlas.AtlasRegion region : atlas.getRegions()) {
             region.getTexture().setFilter(
                 com.badlogic.gdx.graphics.Texture.TextureFilter.Nearest,
@@ -42,7 +42,7 @@ public class ObjectTextureManager {
 
         }
 
-        // Verify all tree textures are loading
+        
         verifyTreeTextures();
 
         initialized = true;
@@ -77,13 +77,13 @@ public class ObjectTextureManager {
             return null;
         }
 
-        // Check cache first
+        
         TextureRegion cached = regionCache.get(name);
         if (cached != null) {
             return cached;
         }
 
-        // Try to load from atlas
+        
         TextureRegion region = atlas.findRegion(name);
         if (region == null) {
             log.warn("No region found for '{}', trying 'unknown' texture", name);
@@ -94,7 +94,7 @@ public class ObjectTextureManager {
             }
         }
 
-        // Cache for future use
+        
         regionCache.put(name, region);
         return region;
     }

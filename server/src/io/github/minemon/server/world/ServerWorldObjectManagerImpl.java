@@ -1,10 +1,14 @@
 package io.github.minemon.server.world;
 
+import com.badlogic.gdx.math.Rectangle;
+import io.github.minemon.inventory.service.impl.ItemSpawnService;
 import io.github.minemon.world.biome.model.Biome;
 import io.github.minemon.world.model.ObjectType;
 import io.github.minemon.world.model.WorldObject;
 import io.github.minemon.world.service.WorldObjectManager;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
@@ -14,12 +18,16 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+
 @Service
 @Primary
 @Slf4j
 public class ServerWorldObjectManagerImpl implements WorldObjectManager {
 
     private final Map<String, List<WorldObject>> objectsByChunk = new ConcurrentHashMap<>();
+    @Autowired
+    @Lazy
+    private ItemSpawnService itemSpawnService;
 
     @Override
     public void initialize() {
@@ -40,14 +48,14 @@ public class ServerWorldObjectManagerImpl implements WorldObjectManager {
             return objects;
         }
 
-        // Generate a chunk-specific seed
+
         long chunkSeed = seed + chunkX * 341873128712L + chunkY * 132897987541L;
         Random random = new Random(chunkSeed);
 
-        // Get chunk size from tiles array
+
         int chunkSize = tiles.length;
 
-        // Calculate object placement
+
         for (String objTypeName : biome.getSpawnableObjects()) {
             ObjectType type;
             try {
@@ -57,24 +65,26 @@ public class ServerWorldObjectManagerImpl implements WorldObjectManager {
                 continue;
             }
 
-            double spawnChance = biome.getSpawnChanceForObject(type);
-            int maxAttempts = (int)(spawnChance * (chunkSize * chunkSize));
 
+            double spawnChance = biome.getSpawnChanceForObject(type);
+            int maxAttempts = isTreeType(type) ?
+                (int) (spawnChance * (chunkSize * chunkSize) * 2) :
+                (int) (spawnChance * (chunkSize * chunkSize));
             for (int attempt = 0; attempt < maxAttempts; attempt++) {
                 int localX = random.nextInt(chunkSize);
                 int localY = random.nextInt(chunkSize);
 
-                // Check if tile type is valid for this object
+
                 int tileId = tiles[localX][localY];
                 if (!biome.getAllowedTileTypes().contains(tileId)) {
                     continue;
                 }
 
-                // Convert to world coordinates
+
                 int worldX = chunkX * chunkSize + localX;
                 int worldY = chunkY * chunkSize + localY;
 
-                // Check spacing requirements
+
                 if (canPlaceObject(objects, worldX, worldY, type)) {
                     WorldObject obj = new WorldObject(worldX, worldY, type, type.isCollidable());
                     objects.add(obj);
@@ -83,24 +93,56 @@ public class ServerWorldObjectManagerImpl implements WorldObjectManager {
                 }
             }
         }
+        itemSpawnService.spawnItemsInChunk(chunkX, chunkY, tiles, biome);
 
-        log.info("Generated {} objects for chunk {},{}", objects.size(), chunkX, chunkY);
         return objects;
     }
 
+    private boolean isTreeType(ObjectType type) {
+        return type == ObjectType.TREE_0 ||
+            type == ObjectType.TREE_1 ||
+            type == ObjectType.SNOW_TREE ||
+            type == ObjectType.HAUNTED_TREE ||
+            type == ObjectType.RUINS_TREE ||
+            type == ObjectType.APRICORN_TREE ||
+            type == ObjectType.RAIN_TREE ||
+            type == ObjectType.CHERRY_TREE;
+    }
+
     private boolean canPlaceObject(List<WorldObject> existingObjects, int x, int y, ObjectType type) {
-        // Define minimum spacing based on object type
-        int minSpacing = type.name().contains("TREE") ? 3 : 2;
+
+        int width = type.getWidthInTiles();
+        int height = type.getHeightInTiles();
+
+
+        float TILE_SIZE = 32f;
+        Rectangle newObjBounds = new Rectangle(
+            x * TILE_SIZE,
+            y * TILE_SIZE,
+            width * TILE_SIZE,
+            height * TILE_SIZE
+        );
+
+
+        float spacing = isTreeType(type) ? 3.0f : 1.5f;
+        newObjBounds.x -= TILE_SIZE * spacing;
+        newObjBounds.y -= TILE_SIZE * spacing;
+        newObjBounds.width += TILE_SIZE * spacing * 2;
+        newObjBounds.height += TILE_SIZE * spacing * 2;
 
         for (WorldObject existing : existingObjects) {
-            int dx = existing.getTileX() - x;
-            int dy = existing.getTileY() - y;
-            double distance = Math.sqrt(dx * dx + dy * dy);
+            Rectangle existingBounds = new Rectangle(
+                existing.getTileX() * TILE_SIZE,
+                existing.getTileY() * TILE_SIZE,
+                existing.getType().getWidthInTiles() * TILE_SIZE,
+                existing.getType().getHeightInTiles() * TILE_SIZE
+            );
 
-            if (distance < minSpacing) {
+            if (newObjBounds.overlaps(existingBounds)) {
                 return false;
             }
         }
+
         return true;
     }
 

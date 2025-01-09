@@ -30,11 +30,11 @@ public class RemotePlayerModel {
         wasMoving = moving;
         moving = isMoving;
 
-        // Update animation
+        
         if (moving) {
             animationTime += delta;
         } else if (wasMoving != moving) {
-            animationTime = 0;  // Reset animation when movement state changes
+            animationTime = 0;  
         }
     }
 }

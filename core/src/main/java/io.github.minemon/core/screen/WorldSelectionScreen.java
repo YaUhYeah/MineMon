@@ -23,14 +23,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Random;
-
 @Component
+@Scope("prototype")
 @Slf4j
 public class WorldSelectionScreen implements Screen {
     private final AudioService audioService;
@@ -168,6 +169,7 @@ public class WorldSelectionScreen implements Screen {
                 if (selectedWorldName != null) {
                     log.debug("PLAY requested for world '{}'", selectedWorldName);
                     worldService.loadWorld(selectedWorldName);
+                    screenManager.disposeScreen(GameScreen.class);
                     screenManager.showScreen(GameScreen.class);
                 }
             }
@@ -490,6 +492,7 @@ public class WorldSelectionScreen implements Screen {
 
     @Override
     public void hide() {
+        Gdx.input.setInputProcessor(null);
         audioService.stopMenuMusic();
     }
 

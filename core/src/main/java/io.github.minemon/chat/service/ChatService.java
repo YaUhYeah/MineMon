@@ -19,7 +19,7 @@ public interface ChatService {
     String getPreviousHistoryMessage(String currentText);
     String getNextHistoryMessage();
 
-    // **Add the following methods**
+    
     void addListener(ChatListener listener);
     void removeListener(ChatListener listener);
 }

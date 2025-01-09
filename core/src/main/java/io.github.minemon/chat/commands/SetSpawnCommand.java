@@ -48,7 +48,7 @@ public class SetSpawnCommand implements Command {
         float x, y;
 
         if (args == null || args.trim().isEmpty()) {
-            // Use current position
+            
             PlayerData player = playerService.getPlayerData();
             if (player == null) {
                 chatService.addSystemMessage("Error: Player not found");
@@ -57,7 +57,7 @@ public class SetSpawnCommand implements Command {
             x = player.getX();
             y = player.getY();
         } else {
-            // Parse coordinates
+            
             String[] parts = args.trim().split("\\s+");
             if (parts.length != 2) {
                 chatService.addSystemMessage("Usage: " + getUsage());
@@ -73,16 +73,16 @@ public class SetSpawnCommand implements Command {
             }
         }
 
-        // Update spawn point
+        
         spawnService.setSpawn(x, y);
 
-        // Notify player
+        
         String message = String.format("Spawn point set to (%.1f, %.1f)", x, y);
         chatService.addSystemMessage(message);
 
-        // In multiplayer, notify server (if you want to implement server-side spawn points)
+        
         if (multiplayerClient.isConnected()) {
-            // You could add a custom network message for this
+            
             log.debug("Spawn point updated in multiplayer mode");
         }
     }

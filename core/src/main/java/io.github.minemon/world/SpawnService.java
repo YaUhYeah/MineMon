@@ -29,10 +29,10 @@ public class SpawnService {
       SpawnPoint newSpawn = new SpawnPoint(x, y);
 
         if (worldService.isMultiplayerMode()) {
-            // In multiplayer, we just update the local cache
+            
             this.defaultSpawn = newSpawn;
         } else {
-            // In singleplayer, persist to file
+            
             this.defaultSpawn = newSpawn;
             saveSpawn();
         }

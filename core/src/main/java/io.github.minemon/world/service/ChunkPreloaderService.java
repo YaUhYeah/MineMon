@@ -16,12 +16,12 @@ import java.util.concurrent.TimeUnit;
 @Service
 @Slf4j
 public class ChunkPreloaderService {
-    // Significantly increased radius for better coverage
+    
     private static final int VISIBLE_RADIUS = 3;
     private static final int PRELOAD_RADIUS = 5;
     private static final int URGENT_RADIUS = 2;
-    private static final long CHUNK_REQUEST_TIMEOUT = 2000; // 2 seconds timeout
-    private static final long URGENT_REQUEST_TIMEOUT = 1000; // 1 second for urgent chunks
+    private static final long CHUNK_REQUEST_TIMEOUT = 2000; 
+    private static final long URGENT_REQUEST_TIMEOUT = 1000; 
 
     private final WorldService worldService;
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
@@ -46,7 +46,7 @@ public class ChunkPreloaderService {
             while (!Thread.currentThread().isInterrupted()) {
                 try {
                     processUrgentChunks();
-                    Thread.sleep(100); // Check urgent queue every 100ms
+                    Thread.sleep(100); 
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
@@ -68,7 +68,7 @@ public class ChunkPreloaderService {
         if (worldService.isMultiplayerMode() && client != null && client.isConnected()) {
             chunkLoadingManager.queueChunkRequest((int) chunkPos.x, (int) chunkPos.y, urgent);
         } else {
-            // Single-player direct load/generate
+            
             worldService.loadChunk(chunkPos);
         }
     }

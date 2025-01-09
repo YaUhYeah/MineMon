@@ -51,16 +51,19 @@ public class WorldObject {
         float pixelY = tileY * 32;
 
         if (type == ObjectType.APRICORN_TREE) {
-            float width = 3 * 32;
-            float height = 2 * 32;
-            float offsetX = -32;
+            float width  = 32;
+            float height = 64;
+
+            float offsetX = 32;
+            float offsetY = 0;
 
             return new Rectangle(
                 pixelX + offsetX,
-                pixelY,
+                pixelY + offsetY,
                 width,
                 height
             );
+
         } else if (isTreeType(type)) {
             return new Rectangle(
                 pixelX,

@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 public class SpawnCommand implements Command {
     private static final float SPAWN_X = 0f;
     private static final float SPAWN_Y = 0f;
-    private static final long CHUNK_LOAD_TIMEOUT = 2000; // 2 seconds max wait
+    private static final long CHUNK_LOAD_TIMEOUT = 2000; 
 
     @Override
     public String getName() { return "spawn"; }
@@ -46,22 +46,22 @@ public class SpawnCommand implements Command {
 
         chatService.addSystemMessage("Preparing spawn area...");
 
-        // Start preloading chunks
+        
         chunkLoadingManager.preloadChunksAroundPosition(SPAWN_X, SPAWN_Y);
 
-        // Give chunks a moment to start loading
+        
         try {
             Thread.sleep(500);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
 
-        // Set position
+        
         player.setX(SPAWN_X);
         player.setY(SPAWN_Y);
         playerService.setPosition(0, 0);
 
-        // Sync with server if needed
+        
         if (multiplayerClient.isConnected()) {
             multiplayerClient.sendPlayerMove(
                 player.getX(),

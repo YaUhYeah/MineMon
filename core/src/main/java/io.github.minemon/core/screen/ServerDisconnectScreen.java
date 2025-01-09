@@ -16,10 +16,12 @@ import io.github.minemon.core.service.UiService;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
+@Scope("prototype")
 public class ServerDisconnectScreen implements Screen {
     private final ScreenManager screenManager;
     private final UiService uiService;
@@ -44,21 +46,21 @@ public class ServerDisconnectScreen implements Screen {
         mainTable.setFillParent(true);
         stage.addActor(mainTable);
 
-        // Set dark semi-transparent background
+        
         mainTable.setBackground(skin.newDrawable("white", 0.2f, 0.2f, 0.2f, 0.9f));
 
-        // Title
+        
         Label titleLabel = new Label(getDisconnectTitle(), skin);
         titleLabel.setAlignment(Align.center);
         mainTable.add(titleLabel).pad(40).row();
 
-        // Message
+        
         Label messageLabel = new Label(getDisconnectMessage(), skin);
         messageLabel.setAlignment(Align.center);
         messageLabel.setWrap(true);
         mainTable.add(messageLabel).width(400).pad(20).row();
 
-        // Back button
+        
         TextButton backButton = new TextButton("Back to Menu", skin);
         backButton.addListener(new ClickListener() {
             @Override
@@ -68,7 +70,7 @@ public class ServerDisconnectScreen implements Screen {
         });
         mainTable.add(backButton).pad(40).width(200).height(50).row();
 
-        // ESC key handler
+        
         stage.addListener(new InputListener() {
             @Override
             public boolean keyDown(InputEvent event, int keycode) {
@@ -100,6 +102,7 @@ public class ServerDisconnectScreen implements Screen {
     public void resize(int width, int height) {
         stage.getViewport().update(width, height, true);
     }
+
     private String getDisconnectTitle() {
         if (disconnectReason == null) {
             return "Disconnected from Server";

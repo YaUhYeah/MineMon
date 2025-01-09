@@ -10,15 +10,15 @@ import java.util.Map;
 public class Biome {
     private final String name;
 
-    private BiomeType type;
+    private final BiomeType type;
 
-    private List<Integer> allowedTileTypes;
+    private final List<Integer> allowedTileTypes;
 
-    private Map<Integer, Double> tileDistribution;
+    private final Map<Integer, Double> tileDistribution;
 
-    private List<String> spawnableObjects;
+    private final List<String> spawnableObjects;
 
-    private Map<String, Double> spawnChances;
+    private final Map<String, Double> spawnChances;
 
     public Biome(String name,
                  BiomeType type,

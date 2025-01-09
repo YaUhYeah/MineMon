@@ -1,14 +1,14 @@
 buildscript {
   repositories {
-    mavenCentral()
-    maven { url 'https://s01.oss.sonatype.org' }
-    gradlePluginPortal()
-    mavenLocal()
     google()
-    maven { url 'https://plugins.gradle.org/m2/' }
+    mavenCentral()
+    gradlePluginPortal()
+    maven { url 'https://s01.oss.sonatype.org' }
+    mavenLocal()
     maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
     maven { url 'https://s01.oss.sonatype.org/content/repositories/snapshots/' }
   }
+
   dependencies {
     classpath 'com.android.tools.build:gradle:8.7.3'
     classpath "org.springframework.boot:spring-boot-gradle-plugin:3.1.4"
@@ -20,7 +20,6 @@ allprojects {
   apply plugin: 'eclipse'
   apply plugin: 'idea'
 
-
   idea {
     module {
       outputDir file('build/classes/java/main')
@@ -31,7 +30,7 @@ allprojects {
 
 configure(subprojects - project(':android')) {
   apply plugin: 'java-library'
-  sourceCompatibility = 8
+  sourceCompatibility = 17
 
   sourceSets {
     main {
@@ -43,12 +42,15 @@ configure(subprojects - project(':android')) {
   }
 
   tasks.register('generateAssetList') {
-    inputs.dir("${project.rootDir}/assets/")
-    File assetsFolder = new File("${project.rootDir}/assets/")
-    File assetsFile = new File(assetsFolder, "assets.txt")
-
-    fileTree(assetsFolder).collect { assetsFolder.relativePath(it) }.sort().each {
-      assetsFile.append(it + "\n")
+    doLast {
+      File assetsFolder = new File("${project.rootDir}/assets/")
+      File assetsFile = new File(assetsFolder, "assets.txt")
+      assetsFile.text = '' // Clear file first
+      fileTree(assetsFolder).visit { FileVisitDetails details ->
+        if (!details.directory) {
+          assetsFile.append(details.relativePath.toString() + "\n")
+        }
+      }
     }
   }
   processResources.dependsOn 'generateAssetList'
@@ -56,24 +58,15 @@ configure(subprojects - project(':android')) {
   compileJava {
     options.incremental = true
   }
-    repositories {
-      mavenCentral()
-      gradlePluginPortal()
-  }
 }
 
 subprojects {
-  version = '$projectVersion'
+  version = '1.0'
   ext.appName = 'MineMon'
-  repositories {
-    mavenCentral()
-    gradlePluginPortal()
-    maven { url 'https://s01.oss.sonatype.org' }
-    mavenLocal()
-    maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
-    maven { url 'https://s01.oss.sonatype.org/content/repositories/snapshots/' }
-    maven { url 'https://jitpack.io' }
+  configurations.configureEach {
+    exclude group: 'ch.qos.logback', module: 'logback-classic'
   }
+
 }
 
 eclipse.project.name = 'MineMon-parent'

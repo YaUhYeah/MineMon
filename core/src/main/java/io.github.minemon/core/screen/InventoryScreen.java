@@ -22,7 +22,7 @@ import io.github.minemon.inventory.model.InventoryItem;
 import io.github.minemon.inventory.model.InventorySlot;
 import io.github.minemon.inventory.service.InventoryService;
 import io.github.minemon.inventory.service.impl.ItemTextureManager;
-import io.github.minemon.player.service.PlayerService;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -36,7 +36,6 @@ public class InventoryScreen {
     private static final int INVENTORY_ROWS = 3;
     private static final int CRAFTING_SIZE = 2;
 
-    private final PlayerService playerService;
     private final InventoryService inventoryService;
     private final UiService uiService;
     @Autowired
@@ -44,6 +43,7 @@ public class InventoryScreen {
     private final InputService inputService;
 
     private Stage stage;
+    @Getter
     private boolean visible;
     private Table mainTable;
     private Table craftingTable;
@@ -63,12 +63,11 @@ public class InventoryScreen {
     @Autowired
     private ItemTextureManager textureManager;
 
-    // Reference to your atlas
+    
     private TextureAtlas uiAtlas;
 
     @Autowired
-    public InventoryScreen(PlayerService playerService, InventoryService inventoryService, UiService uiService, InputService inputService) {
-        this.playerService = playerService;
+    public InventoryScreen(InventoryService inventoryService, UiService uiService, InputService inputService) {
         this.inventoryService = inventoryService;
         this.uiService = uiService;
         this.inputService = inputService;
@@ -78,7 +77,7 @@ public class InventoryScreen {
         if (stage != null) return;
         stage = new Stage(new ScreenViewport());
 
-        // Load your atlas once
+        
         uiAtlas = new TextureAtlas(Gdx.files.internal("atlas/ui-gfx-atlas.atlas"));
 
         setupUI();
@@ -92,20 +91,20 @@ public class InventoryScreen {
         mainTable.setFillParent(true);
         mainTable.center();
 
-        // Instead of skin.newDrawable("hotbar_bg", ...), use atlas region + tint
+        
         mainTable.setBackground(
             new TextureRegionDrawable(uiAtlas.findRegion("hotbar_bg"))
                 .tint(new Color(0f, 0f, 0f, 0.85f))
         );
 
-        // Crafting Grid (2x2)
+        
         craftingTable = new Table(skin);
         craftingTable.setBackground(
             new TextureRegionDrawable(uiAtlas.findRegion("hotbar_bg"))
                 .tint(new Color(0.2f, 0.2f, 0.2f, 0.8f))
         );
 
-        // Create 2x2 crafting grid
+        
         for (int i = 0; i < CRAFTING_SIZE; i++) {
             for (int j = 0; j < CRAFTING_SIZE; j++) {
                 Table slot = createCraftingSlot(i * CRAFTING_SIZE + j);
@@ -114,19 +113,19 @@ public class InventoryScreen {
             craftingTable.row();
         }
 
-        // Arrow using the atlas
+        
         Image arrowImage = new Image(
             new TextureRegionDrawable(uiAtlas.findRegion("arrow"))
         );
         craftingTable.add(arrowImage).size(32, 32).padLeft(10).padRight(10);
 
-        // Result slot
+        
         Table resultSlot = createCraftingResultSlot();
         craftingTable.add(resultSlot).size(SLOT_SIZE).pad(2);
 
         mainTable.add(craftingTable).padBottom(20).row();
 
-        // Main Inventory Grid
+        
         inventoryTable = new Table(skin);
         inventoryTable.setBackground(
             new TextureRegionDrawable(uiAtlas.findRegion("hotbar_bg"))
@@ -144,7 +143,7 @@ public class InventoryScreen {
 
         mainTable.add(inventoryTable).pad(20).row();
 
-        // Hotbar
+        
         hotbarTable = new Table(skin);
         hotbarTable.setBackground(
             new TextureRegionDrawable(uiAtlas.findRegion("hotbar_bg"))
@@ -152,14 +151,14 @@ public class InventoryScreen {
         );
 
         for (int i = 0; i < 9; i++) {
-            final int index = 27 + i; // Hotbar slots start after main inventory
+            final int index = 27 + i; 
             Table slot = createInventorySlot(index);
             hotbarTable.add(slot).size(SLOT_SIZE).pad(2);
         }
 
         mainTable.add(hotbarTable).padTop(10).row();
 
-        // Close button
+        
         TextButton closeButton = new TextButton("Close", skin);
         closeButton.addListener(new ClickListener() {
             @Override
@@ -175,7 +174,7 @@ public class InventoryScreen {
 
     private Table createCraftingSlot(final int index) {
         Table slot = new Table(uiService.getSkin());
-        // Example: using "slot_normal" from the atlas + tint
+        
         slot.setBackground(
             new TextureRegionDrawable(uiAtlas.findRegion("slot_normal"))
                 .tint(new Color(0.2f, 0.2f, 0.2f, 0.8f))
@@ -185,13 +184,13 @@ public class InventoryScreen {
 
     private Table createInventorySlot(final int index) {
         Table slot = new Table(uiService.getSkin());
-        // Example: using "slot_normal" from the atlas + tint
+        
         slot.setBackground(
             new TextureRegionDrawable(uiAtlas.findRegion("slot_normal"))
                 .tint(new Color(0.2f, 0.2f, 0.2f, 0.8f))
         );
 
-        // Add drag and drop functionality
+        
         slot.addListener(new InputListener() {
             @Override
             public boolean touchDown(InputEvent event, float x, float y, int pointer, int button) {
@@ -240,7 +239,7 @@ public class InventoryScreen {
         draggedImage.setSize(SLOT_SIZE, SLOT_SIZE);
 
         Label.LabelStyle countStyle = new Label.LabelStyle(uiService.getSkin().get(Label.LabelStyle.class));
-        // We can still use a simple NinePatchDrawable or tinted 'white' from the Skin for the label’s background
+        
         countStyle.background = uiService.getSkin().newDrawable("white", new Color(0, 0, 0, 0.5f));
         draggedCountLabel = new Label("", countStyle);
         draggedCountLabel.setSize(20, 20);
@@ -258,17 +257,17 @@ public class InventoryScreen {
         if (slot.getItemId() != null && slot.getCount() > 0) {
             TextureRegion texture = textureManager.getTexture(slot.getItemId());
             if (texture != null) {
-                // Background (this can remain, or you can re-use a tinted atlas region)
+                
                 Table background = new Table();
                 background.setBackground(uiService.getSkin().newDrawable("white", new Color(0.2f, 0.2f, 0.2f, 0.8f)));
                 slotTable.add(background).grow();
 
-                // Item image
+                
                 Image itemImage = new Image(texture);
                 itemImage.setScaling(Scaling.fit);
                 slotTable.add(itemImage).size(SLOT_SIZE - 8).pad(4).expand().center();
 
-                // Stack count
+                
                 if (slot.getCount() > 1) {
                     Label.LabelStyle countStyle = new Label.LabelStyle(uiService.getSkin().get(Label.LabelStyle.class));
                     countStyle.background = uiService.getSkin().newDrawable("white", new Color(0, 0, 0, 0.5f));
@@ -277,17 +276,17 @@ public class InventoryScreen {
                     slotTable.add(countLabel).size(20, 20).expand().right().bottom().pad(2);
                 }
 
-                // Durability bar
+                
                 if (slot.getMaxDurability() > 0) {
                     addDurabilityBar(slotTable, slot);
                 }
 
-                // Tooltip
+                
                 addTooltip(itemImage, slot);
             }
         }
 
-        // Hover effect: optional usage of "slot_selected"
+        
         addHoverEffect(slotTable);
     }
 
@@ -316,11 +315,11 @@ public class InventoryScreen {
 
     private Color getDurabilityColor(float percent) {
         if (percent > 0.5f) {
-            return new Color(0.2f, 0.8f, 0.2f, 0.8f); // Green
+            return new Color(0.2f, 0.8f, 0.2f, 0.8f); 
         } else if (percent > 0.25f) {
-            return new Color(0.8f, 0.8f, 0.2f, 0.8f); // Yellow
+            return new Color(0.8f, 0.8f, 0.2f, 0.8f); 
         } else {
-            return new Color(0.8f, 0.2f, 0.2f, 0.8f); // Red
+            return new Color(0.8f, 0.2f, 0.2f, 0.8f); 
         }
     }
 
@@ -380,7 +379,6 @@ public class InventoryScreen {
             visible = true;
             mainTable.setVisible(true);
             previousProcessor = Gdx.input.getInputProcessor();
-            Gdx.input.setInputProcessor(stage);
             update();
 
             stage.addListener(new InputListener() {
@@ -400,12 +398,17 @@ public class InventoryScreen {
     public void hide() {
         if (visible) {
             visible = false;
-            mainTable.setVisible(false);
-            dragGroup.setVisible(false);
+            if (mainTable != null) {
+                mainTable.setVisible(false);
+            }
+            if (dragGroup != null) {
+                dragGroup.setVisible(false);
+            }
             draggedSlot = null;
             dragSourceIndex = -1;
             if (previousProcessor != null) {
                 Gdx.input.setInputProcessor(previousProcessor);
+                previousProcessor = null;
             }
         }
     }
@@ -439,7 +442,7 @@ public class InventoryScreen {
 
     private void finishDragging(int targetIndex) {
         if (dragSourceIndex != targetIndex) {
-            // inventoryService.moveItem(dragSourceIndex, targetIndex);
+            
             update();
         }
 
@@ -451,21 +454,10 @@ public class InventoryScreen {
     public void update() {
         if (!visible) return;
 
-        // If you keep track of a named "gridTable", you can re-draw items here.
-        // Or just re-draw them directly by iterating your inventory tables.
-        // Example pseudo-code if you had a gridTable with cells:
-        /*
-        Table gridTable = mainTable.findActor("gridTable");
-        if (gridTable != null) {
-            int i = 0;
-            for (Cell<?> cell : gridTable.getCells()) {
-                Actor actor = cell.getActor();
-                if (actor instanceof Table && i < inventoryService.getInventory().size()) {
-                    updateSlotDisplay((Table) actor, inventoryService.getInventory().get(i++));
-                }
-            }
-        }
-        */
+        
+        
+        
+        
     }
 
     public void toggleVisibility() {
@@ -487,7 +479,7 @@ public class InventoryScreen {
             stage.dispose();
             stage = null;
         }
-        // If you own the atlas, also dispose it:
+        
         if (uiAtlas != null) {
             uiAtlas.dispose();
             uiAtlas = null;

@@ -30,7 +30,7 @@ public class ServerBiomeServiceImpl extends BiomeServiceImpl {
             throw new IllegalStateException("No biomes loaded for server");
         }
 
-        // Validate each biome has required data
+        
         loadedBiomes.forEach((type, biome) -> {
             if (biome.getAllowedTileTypes() == null || biome.getAllowedTileTypes().isEmpty()) {
                 throw new IllegalStateException("Biome " + type + " has no allowed tile types");

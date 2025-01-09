@@ -75,7 +75,7 @@ public class ChatTable extends Table implements ChatListener {
 
         add(inputField).expandX().fillX().height(30);
 
-        // Initial call to ensure existing messages are displayed
+        
         updateMessages();
     }
 
@@ -96,7 +96,7 @@ public class ChatTable extends Table implements ChatListener {
 
         messageTable.add(msgTable).expandX().fillX().padBottom(2).row();
 
-        // Delay the scroll to ensure the layout is updated
+        
         Gdx.app.postRunnable(() -> {
             messageTable.layout();
             messageScroll.layout();
@@ -138,7 +138,7 @@ public class ChatTable extends Table implements ChatListener {
     @Override
     public void layout() {
         super.layout();
-        // Ensure scroll is at bottom after layout changes
+        
         messageScroll.scrollTo(0, 0, 0, 0);
     }
 }

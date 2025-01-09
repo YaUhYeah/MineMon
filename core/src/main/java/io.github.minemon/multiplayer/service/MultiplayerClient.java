@@ -29,7 +29,7 @@ public interface MultiplayerClient {
     void update(float delta);
     void sendMessage(Object msg);
 
-    // New methods for handling pending actions
+    
     void setPendingLoginRequest(Runnable action);
     void setPendingCreateUserRequest(Runnable action);
 }

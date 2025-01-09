@@ -19,6 +19,9 @@ import java.util.*;
 @Component
 @Slf4j
 public class WorldRenderer {
+    @Getter
+    private boolean initialized = false;
+
     private static final int TILE_SIZE = 32;
     private static final int CHUNK_SIZE = 16;
     private static final int VIEW_PADDING = 5;
@@ -30,7 +33,6 @@ public class WorldRenderer {
     private final List<TreeTopRender> treeTopQueue = new ArrayList<>();
 
     private SpriteBatch batch;
-    private boolean initialized = false;
 
     @Autowired
     private ObjectRenderState objectRenderState;
@@ -52,17 +54,16 @@ public class WorldRenderer {
 
     public void cleanup() {
         objectRenderState.reset();
+        initialized = false;
     }
 
-    /**
-     * Main entry point for rendering the world. Now includes a 'delta' param.
-     */
+    
     public void render(OrthographicCamera camera, float delta) {
         if (!initialized || batch == null) {
             initialize();
         }
 
-        // Clear any faded-out objects if needed
+        
         Rectangle viewBounds = calculateViewBounds();
         objectRenderState.clearInvisibleObjects(viewBounds);
 
@@ -71,18 +72,16 @@ public class WorldRenderer {
 
         treeTopQueue.clear();
 
-        // Render the ground tiles (chunks)
+        
         renderGroundLayer();
 
-        // Render objects below the player
+        
         renderBelowPlayerLayer(delta);
 
         batch.end();
     }
 
-    /**
-     * After everything else, call this to draw the "tops" of trees above the player.
-     */
+    
     public void renderTreeTops(float delta) {
         if (treeTopQueue.isEmpty()) return;
 
@@ -104,13 +103,13 @@ public class WorldRenderer {
         Rectangle viewBounds = calculateViewBounds();
         List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
 
-        // 1) Non-tree objects
+        
         objects.stream()
             .filter(obj -> !isTreeType(obj.getType()))
             .sorted(Comparator.comparingInt(WorldObject::getTileY))
             .forEach(obj -> renderRegularObject(obj, delta));
 
-        // 2) Trees (split base vs. top)
+        
         objects.stream()
             .filter(obj -> isTreeType(obj.getType()))
             .sorted(Comparator.comparingInt(WorldObject::getTileY))
@@ -125,7 +124,7 @@ public class WorldRenderer {
             obj.getType().getTextureRegionName());
         if (texture == null) return;
 
-        // Delegate drawing + fade logic to objectRenderState
+        
         objectRenderState.renderObject(batch, obj, texture, delta);
     }
     private void renderTreeBase(WorldObject tree, float delta) {
@@ -134,28 +133,28 @@ public class WorldRenderer {
         int totalW = full.getRegionWidth();
         int totalH = full.getRegionHeight();
 
-        // Example: 70% base, 30% top
+        
         int basePx = (int)(totalH * 0.7f);
         TextureRegion baseRegion = new TextureRegion(full, 0, totalH - basePx, totalW, basePx);
 
-        int tileW = tree.getType().getWidthInTiles();  // 2
-        int tileH = tree.getType().getHeightInTiles(); // 3
+        int tileW = tree.getType().getWidthInTiles();  
+        int tileH = tree.getType().getHeightInTiles(); 
 
-        int finalW = tileW * 32; // 64
-        int finalH = tileH * 32; // 96
+        int finalW = tileW * 32; 
+        int finalH = tileH * 32; 
 
-        // For the trunk to sit EXACTLY on the bottom 2 tiles:
-        // We do NOT shift left by 32. We just place it at tileX*32
+        
+        
         float drawX = tree.getTileX() * 32f;
         float drawY = tree.getTileY() * 32f;
 
-        // The base is 70% of finalH
-        float baseHeight = finalH * 0.7f; // e.g. 96 * 0.7 = 67.2 → ~67
+        
+        float baseHeight = finalH * 0.7f; 
 
-        // Draw it flush at (drawX, drawY)
+        
         objectRenderState.renderObject(batch, tree,
             baseRegion, delta,
-            drawX, drawY,  // no offset
+            drawX, drawY,  
             finalW, baseHeight
         );
     }
@@ -168,25 +167,25 @@ public class WorldRenderer {
         int totalWidth  = fullTexture.getRegionWidth();
         int totalHeight = fullTexture.getRegionHeight();
 
-        // For a 70% base, top is 30%
+        
         int basePx = (int) (totalHeight * 0.7f);
-        int topPx  = totalHeight - basePx; // 30%
+        int topPx  = totalHeight - basePx; 
 
         TextureRegion topRegion = new TextureRegion(
             fullTexture,
             0,
-            0,          // top is physically at Y=0 in the image
+            0,          
             totalWidth,
             topPx
         );
 
-        // Convert tile size
-        int tileW = tree.getType().getWidthInTiles();    // e.g., 2
-        int tileH = tree.getType().getHeightInTiles();   // e.g., 3
-        int finalWidthPx  = tileW * TILE_SIZE;           // 64 for a 2-tile wide
-        int finalHeightPx = tileH * TILE_SIZE;           // 96 for a 3-tile tall
+        
+        int tileW = tree.getType().getWidthInTiles();    
+        int tileH = tree.getType().getHeightInTiles();   
+        int finalWidthPx  = tileW * TILE_SIZE;           
+        int finalHeightPx = tileH * TILE_SIZE;           
 
-        // The base is 70%, top is 30%
+        
         int baseHeightPx = (int) (finalHeightPx * 0.7f);         int topHeightPx  = finalHeightPx - baseHeightPx;
 
         float drawX = tree.getTileX() * TILE_SIZE;
@@ -233,7 +232,7 @@ public class WorldRenderer {
         Rectangle viewBounds = calculateViewBounds();
         Map<String, ChunkData> visibleChunks = worldService.getVisibleChunks(viewBounds);
 
-        // Draw "void" for unloaded chunks
+        
         batch.setColor(VOID_COLOR);
         for (int x = (int) viewBounds.x; x < viewBounds.x + viewBounds.width; x += CHUNK_SIZE * TILE_SIZE) {
             for (int y = (int) viewBounds.y; y < viewBounds.y + viewBounds.height; y += CHUNK_SIZE * TILE_SIZE) {
@@ -241,7 +240,7 @@ public class WorldRenderer {
                 int chunkY = y / (CHUNK_SIZE * TILE_SIZE);
                 String key = chunkX + "," + chunkY;
                 if (!visibleChunks.containsKey(key)) {
-                    // draw a placeholder
+                    
                     batch.draw(tileManager.getRegionForTile(0), x, y,
                         CHUNK_SIZE * TILE_SIZE, CHUNK_SIZE * TILE_SIZE);
                 }
@@ -249,7 +248,7 @@ public class WorldRenderer {
         }
         batch.setColor(Color.WHITE);
 
-        // Now draw actual loaded chunks
+        
         for (ChunkData chunk : visibleChunks.values()) {
             renderChunk(chunk);
         }
@@ -293,9 +292,7 @@ public class WorldRenderer {
         private final float width;
         private final float height;
 
-        /**
-         * The same WorldObject, so we can fade it using the same ID.
-         */
+        
         private final WorldObject sourceObject;
     }
 }

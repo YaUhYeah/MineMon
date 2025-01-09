@@ -28,12 +28,12 @@ public class ClientConnectionManager {
     }
 
     public boolean acquireInstanceLock() {
-        releaseInstanceLock(); // Always release any existing lock first
+        releaseInstanceLock(); 
 
         try {
             File lockFile = new File(INSTANCE_FILE);
 
-            // Delete the file if it exists but can't be opened
+            
             if (lockFile.exists() && !lockFile.canWrite()) {
                 Files.deleteIfExists(lockFile.toPath());
             }
@@ -43,11 +43,11 @@ public class ClientConnectionManager {
                 StandardOpenOption.WRITE,
                 StandardOpenOption.DELETE_ON_CLOSE);
 
-            // Try to get exclusive lock
+            
             lock = lockChannel.tryLock();
 
             if (lock != null) {
-                // Write instance ID
+                
                 ByteBuffer buffer = ByteBuffer.wrap(instanceId.getBytes());
                 lockChannel.truncate(0);
                 lockChannel.write(buffer);
@@ -73,7 +73,7 @@ public class ClientConnectionManager {
                 lockChannel.close();
                 lockChannel = null;
             }
-            // Try to delete the lock file
+            
             Files.deleteIfExists(Path.of(INSTANCE_FILE));
         } catch (IOException e) {
             log.error("Error releasing instance lock: {}", e.getMessage());

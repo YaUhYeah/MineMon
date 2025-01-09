@@ -1,13 +1,13 @@
 package io.github.minemon.ios;
 
-import io.github.minemon.lwjgl3.GdxGame;
+import io.github.minemon.GdxGame;
 import org.robovm.apple.foundation.NSAutoreleasePool;
 import org.robovm.apple.uikit.UIApplication;
 
 import com.badlogic.gdx.backends.iosrobovm.IOSApplication;
 import com.badlogic.gdx.backends.iosrobovm.IOSApplicationConfiguration;
 
-/** Launches the iOS (RoboVM) application. */
+
 public class IOSLauncher extends IOSApplication.Delegate {
     @Override
     protected IOSApplication createApplication() {

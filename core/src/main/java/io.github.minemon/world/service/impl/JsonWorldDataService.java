@@ -18,10 +18,7 @@ import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Now it references "saveDir" (by default "assets/save/worlds"),
- * ensuring we store everything in the same place used for icon.png
- */
+
 @Slf4j
 public class JsonWorldDataService {
     private final String baseWorldsDir;
@@ -33,7 +30,7 @@ public class JsonWorldDataService {
     private WorldService worldService;
 
     public JsonWorldDataService(String baseWorldsDir, boolean isServer) {
-        // Ensure baseWorldsDir is never null and has proper format
+        
         this.baseWorldsDir = baseWorldsDir != null ? baseWorldsDir.trim() : "save/worlds";
         if (this.baseWorldsDir.isEmpty()) {
             throw new IllegalArgumentException("Base worlds directory cannot be empty");
@@ -42,7 +39,7 @@ public class JsonWorldDataService {
         this.json = new Json();
         this.json.setIgnoreUnknownFields(true);
 
-        // Create base directory if it doesn't exist
+        
         try {
             Files.createDirectories(Paths.get(this.baseWorldsDir));
         } catch (IOException e) {
@@ -101,7 +98,7 @@ public class JsonWorldDataService {
         }
         return Paths.get(baseWorldsDir, worldName.trim());
     }
-    // The main world JSON file -> e.g. "assets/save/worlds/<worldName>/<worldName>.json"
+    
     private Path worldFilePath(String worldName) {
         return worldFolderPath(worldName).resolve(worldName + ".json");
     }
@@ -132,14 +129,14 @@ public class JsonWorldDataService {
                 throw new IOException("Failed to parse world data for " + worldName);
             }
 
-            // Set the world data
+            
             worldData.setWorldName(loaded.getWorldName());
             worldData.setSeed(loaded.getSeed());
             worldData.setCreatedDate(loaded.getCreatedDate());
             worldData.setLastPlayed(loaded.getLastPlayed());
             worldData.setPlayedTime(loaded.getPlayedTime());
 
-            // Clear and copy collections
+            
             worldData.getPlayers().clear();
             worldData.getPlayers().putAll(loaded.getPlayers());
             worldData.getChunks().clear();
@@ -175,9 +172,9 @@ public class JsonWorldDataService {
         }
     }
 
-    // -------------------------------------------------
-    // Chunk storage: "assets/save/worlds/<worldName>/chunks/x,y.json"
-    // -------------------------------------------------
+    
+    
+    
 
     public ChunkData loadChunk(String worldName, int chunkX, int chunkY) throws IOException {
         Path p = chunkFilePath(worldName, chunkX, chunkY);
@@ -195,7 +192,7 @@ public class JsonWorldDataService {
             if (!Files.exists(p.getParent())) {
                 Files.createDirectories(p.getParent());
             }
-            // brand-new 'json' per call:
+            
             Json localJson = new Json();
             localJson.setIgnoreUnknownFields(true);
 
@@ -207,7 +204,7 @@ public class JsonWorldDataService {
 
 
     private Path chunkFilePath(String worldName, int chunkX, int chunkY) {
-        // e.g. "assets/save/worlds/<worldName>/chunks/<chunkX>,<chunkY>.json"
+        
         return worldFolderPath(worldName)
             .resolve("chunks")
             .resolve(chunkX + "," + chunkY + ".json");
@@ -216,7 +213,7 @@ public class JsonWorldDataService {
 
     public List<String> listAllWorlds() {
         List<String> result = new ArrayList<>();
-        Path root = Paths.get(baseWorldsDir);  // e.g. "assets/save/worlds"
+        Path root = Paths.get(baseWorldsDir);  
         if (!Files.exists(root)) {
             return result;
         }
@@ -224,7 +221,7 @@ public class JsonWorldDataService {
             Files.list(root)
                 .filter(Files::isDirectory)
                 .forEach(path -> {
-                    // We check if <worldName>/<worldName>.json exists
+                    
                     String folderName = path.getFileName().toString();
                     Path worldJson = path.resolve(folderName + ".json");
                     if (Files.exists(worldJson)) {
@@ -237,9 +234,7 @@ public class JsonWorldDataService {
         return result;
     }
 
-    /**
-     * Delete entire world folder
-     */
+    
     public void deleteWorld(String worldName) {
         Path folder = worldFolderPath(worldName);
         if (!Files.exists(folder)) {
@@ -247,7 +242,7 @@ public class JsonWorldDataService {
         }
         try {
             Files.walk(folder)
-                .sorted((p1, p2) -> p2.getNameCount() - p1.getNameCount()) // files first
+                .sorted((p1, p2) -> p2.getNameCount() - p1.getNameCount()) 
                 .forEach(f -> {
                     try {
                         Files.delete(f);
@@ -260,9 +255,7 @@ public class JsonWorldDataService {
         }
     }
 
-    /**
-     * Delete a chunk JSON
-     */
+    
     public void deleteChunk(String worldName, int chunkX, int chunkY) {
         try {
             Path p = chunkFilePath(worldName, chunkX, chunkY);

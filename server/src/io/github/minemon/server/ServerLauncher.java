@@ -6,7 +6,7 @@ import io.github.minemon.multiplayer.service.ServerConnectionService;
 import io.github.minemon.plugin.PluginManager;
 import io.github.minemon.server.service.MultiplayerServer;
 import io.github.minemon.server.world.ServerWorldServiceImpl;
-import io.github.minemon.world.service.WorldService;  // <-- Assuming your world service is here
+import io.github.minemon.world.service.WorldService;  
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,7 +60,7 @@ public class ServerLauncher {
         app.setAdditionalProfiles("server");
         ConfigurableApplicationContext context = app.run(args);
 
-        // NEW CALL: ensure the server's default world is created or loaded
+        
         onServerStart(context);
 
         MultiplayerServer server = context.getBean(MultiplayerServer.class);
@@ -123,16 +123,16 @@ public class ServerLauncher {
         String defaultServerWorldName = "serverWorld";
 
         try {
-            // Initialize the world service first
+            
             worldService.initIfNeeded();
 
-            // Check if world exists by trying to load it
+            
             try {
                 worldService.loadWorld(defaultServerWorldName);
                 log.info("Successfully loaded server world '{}'.", defaultServerWorldName);
             } catch (Exception e) {
                 log.info("World '{}' does not exist. Creating new world...", defaultServerWorldName);
-                // Create new world with random seed if load fails
+                
                 long seed = new Random().nextLong();
                 boolean created = worldService.createWorld(defaultServerWorldName, seed);
                 if (created) {
@@ -144,7 +144,7 @@ public class ServerLauncher {
                 }
             }
 
-            // Ensure world service is fully initialized
+            
             worldService.initIfNeeded();
             log.info("Server world initialization complete.");
 
@@ -156,15 +156,15 @@ public class ServerLauncher {
 
     @PostConstruct
     public void init() {
-        // Initialize world service
+        
         worldService.initIfNeeded();
 
-        // Add shutdown hook for clean saves
+        
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
                 worldService.shutdown();
             } catch (Exception e) {
-                // Log but don't rethrow as we're shutting down
+                
                 log.error("Error during shutdown save: ", e);
             }
         }));

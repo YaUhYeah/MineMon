@@ -44,7 +44,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     private static final int TILE_SIZE = 32;
     private static final int CHUNK_SIZE = 16;
     private static final int CHUNK_CACHE_SIZE = 256;
-    private static final int AUTOSAVE_INTERVAL = 5 * 60 * 1000; // 5 minutes
+    private static final int AUTOSAVE_INTERVAL = 5 * 60 * 1000; 
     private final WorldGenerator worldGenerator;
     private final WorldObjectManager worldObjectManager;
     private final TileManager tileManager;
@@ -83,7 +83,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             .maximumSize(CHUNK_CACHE_SIZE)
             .expireAfterAccess(5, TimeUnit.MINUTES)
             .removalListener((RemovalNotification<String, ChunkData> notification) -> {
-                // Save chunk when evicted from cache
+                
                 try {
                     if (notification.getValue() != null) {
                         jsonWorldDataService.saveChunk("serverWorld", notification.getValue());
@@ -105,7 +105,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     @PreDestroy
     public void shutdown() {
-        // Final save on shutdown
+        
         performAutoSave();
         autoSaveExecutor.shutdown();
         try {
@@ -122,16 +122,16 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         try {
             WorldData currentWorld = loadedWorlds.get("serverWorld");
             if (currentWorld != null) {
-                // Save world data
+                
                 jsonWorldDataService.saveWorld(currentWorld);
 
-                // Save all player data
+                
                 for (Map.Entry<String, PlayerData> entry :
                     currentWorld.getPlayers().entrySet()) {
                     jsonWorldDataService.savePlayerData("serverWorld", entry.getValue());
                 }
 
-                // Save dirty chunks
+                
                 for (ChunkData chunk : getDirtyChunks()) {
                     jsonWorldDataService.saveChunk("serverWorld", chunk);
                 }
@@ -172,9 +172,9 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
         var chunkData = wd.getChunks().get(chunkKey);
         if (chunkData != null) {
-            // Existing object update logic...
+            
 
-            // Mark chunk as dirty
+            
             dirtyChunks.add(chunkData);
 
             try {
@@ -195,7 +195,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             try {
                 jsonWorldDataService.savePlayerData("serverWorld", pd);
 
-                // Mark nearby chunks as dirty when player moves
+                
                 int chunkX = (int) Math.floor(pd.getX() / 16);
                 int chunkY = (int) Math.floor(pd.getY() / 16);
                 markChunkDirty(chunkX, chunkY);
@@ -215,7 +215,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     public ChunkData loadOrGenerateChunkInternal(int chunkX, int chunkY) {
         try {
-            // First validate initialization
+            
             if (!initialized) {
                 throw new IllegalStateException("WorldService not initialized");
             }
@@ -224,16 +224,16 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
                 throw new IllegalStateException("Required services not initialized");
             }
 
-            // Acquire chunk lock to prevent concurrent generation
+            
             String lockKey = chunkX + "," + chunkY;
             synchronized (chunkLocks.computeIfAbsent(lockKey, k -> new Object())) {
-                // First try loading from storage
+                
                 ChunkData loaded = jsonWorldDataService.loadChunk("serverWorld", chunkX, chunkY);
                 if (loaded != null) {
                     return loaded;
                 }
 
-                // Generate new chunk with proper error handling
+                
                 int[][] tiles = worldGenerator.generateChunk(chunkX, chunkY);
                 if (tiles == null) {
                     throw new RuntimeException("Failed to generate tiles for chunk");
@@ -244,18 +244,18 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
                 newChunk.setChunkY(chunkY);
                 newChunk.setTiles(tiles);
 
-                // Get biome and validate
+                
                 Biome biome = worldGenerator.getBiomeForChunk(chunkX, chunkY);
                 if (biome == null) {
                     throw new RuntimeException("Failed to get biome for chunk");
                 }
 
-                // Generate objects
+                
                 List<WorldObject> objects = worldObjectManager.generateObjectsForChunk(
                     chunkX, chunkY, tiles, biome, getWorldData().getSeed());
                 newChunk.setObjects(objects);
 
-                // Save the chunk
+                
                 try {
                     jsonWorldDataService.saveChunk("serverWorld", newChunk);
                 } catch (IOException e) {
@@ -279,7 +279,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             throw new IllegalStateException("BiomeService not configured");
         }
 
-        // Validate config directories exist
+        
         Path configDir = Paths.get("config");
         if (!Files.exists(configDir)) {
             try {
@@ -289,7 +289,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             }
         }
 
-        // Validate biomes.json exists
+        
         Path biomesConfig = configDir.resolve("biomes.json");
         if (!Files.exists(biomesConfig)) {
             throw new IllegalStateException("biomes.json configuration file missing");
@@ -298,7 +298,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     @Override
     public void forceLoadChunksAt(float tileX, float tileY) {
-        // Suppose we want a 2-chunk radius
+        
         int RADIUS = 2;
         int chunkX = (int) Math.floor(tileX / CHUNK_SIZE);
         int chunkY = (int) Math.floor(tileY / CHUNK_SIZE);
@@ -311,11 +311,11 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
                 if (!isChunkLoaded(chunkPos)) {
                     if (isMultiplayerMode()) {
-                        // Use your queue-based or immediate approach
-                        // to request from the server
-                        chunkLoadingManager.queueChunkRequest(cx, cy, true /* highPriority */);
+                        
+                        
+                        chunkLoadingManager.queueChunkRequest(cx, cy, true );
                     } else {
-                        // Singleplayer -> immediately load/generate
+                        
                         loadOrGenerateChunk(cx, cy);
                     }
                 }
@@ -335,14 +335,14 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             return;
         }
 
-        // Initialize biome configuration first
+        
         Map<BiomeType, Biome> biomes = biomeLoader.loadBiomes("config/biomes.json");
         if (biomes.isEmpty()) {
             log.error("Failed to load biome configurations");
             return;
         }
 
-        // Set seed and biomes for world generator
+        
         if (!loadedWorlds.containsKey("serverWorld")) {
             try {
                 WorldData wd = new WorldData();
@@ -351,10 +351,10 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
                 worldGenerator.setSeedAndBiomes(wd.getSeed(), biomes);
                 biomeService.initWithSeed(wd.getSeed());
             } catch (IOException e) {
-                // Create new world if none exists
+                
                 WorldData newWorld = new WorldData();
                 newWorld.setWorldName("serverWorld");
-                newWorld.setSeed(new Random().nextLong()); // Generate new seed
+                newWorld.setSeed(new Random().nextLong()); 
                 try {
                     jsonWorldDataService.saveWorld(newWorld);
                     worldGenerator.setSeedAndBiomes(newWorld.getSeed(), biomes);
@@ -396,9 +396,9 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         return tileManager;
     }
 
-    // ------------------------------
-    // Saving and Loading from JSON
-    // ------------------------------
+    
+    
+    
     @Override
     public void loadWorldData() {
         try {
@@ -412,7 +412,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     @Override
     public boolean createWorld(String worldName, long seed) {
-        // We simply set in-memory and call save
+        
         if (jsonWorldDataService.worldExists(worldName)) {
             log.warn("World '{}' already exists, cannot create", worldName);
             return false;
@@ -477,7 +477,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     @Override
     public List<WorldObject> getVisibleObjects(Rectangle viewBounds) {
-        // Implementation unchanged, except no DB call
+        
         List<WorldObject> visibleObjects = new ArrayList<>();
         Map<String, ChunkData> visibleChunks = getVisibleChunks(viewBounds);
         for (ChunkData chunk : visibleChunks.values()) {
@@ -490,7 +490,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     @Override
     public Map<String, ChunkData> getVisibleChunks(Rectangle viewBounds) {
-        // Implementation is basically the same
+        
         Map<String, ChunkData> visibleChunks = new HashMap<>();
 
         int startChunkX = (int) Math.floor(viewBounds.x / (CHUNK_SIZE * TILE_SIZE));
@@ -559,7 +559,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
         jsonWorldDataService.deleteWorld(worldName);
 
-        // If it’s the currently loaded world, clear it
+        
         if (worldData.getWorldName() != null && worldData.getWorldName().equals(worldName)) {
             worldData.setWorldName(null);
             worldData.setSeed(0);
@@ -577,7 +577,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     public void regenerateChunk(int chunkX, int chunkY) {
         String key = chunkX + "," + chunkY;
         worldData.getChunks().remove(key);
-        // Also delete chunk JSON if present
+        
         jsonWorldDataService.deleteChunk(worldData.getWorldName(), chunkX, chunkY);
         loadOrGenerateChunk(chunkX, chunkY);
     }
@@ -600,15 +600,15 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             }
             String key = chunkX + "," + chunkY;
 
-            // Try loading from disk
+            
             ChunkData loaded = jsonWorldDataService.loadChunk("serverWorld", chunkX, chunkY);
             if (loaded != null) {
-                // IMPORTANT: Store in memory
+                
                 worldData.getChunks().put(key, loaded);
                 return loaded;
             }
 
-            // Otherwise generate
+            
             int[][] tiles = worldGenerator.generateChunk(chunkX, chunkY);
             Biome biome = worldGenerator.getBiomeForChunk(chunkX, chunkY);
 
@@ -622,10 +622,10 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             );
             newChunk.setObjects(objects);
 
-            // Save to disk
+            
             jsonWorldDataService.saveChunk("serverWorld", newChunk);
 
-            // Also store in memory
+            
             worldData.getChunks().put(key, newChunk);
 
             return newChunk;
@@ -639,7 +639,7 @@ public class ServerWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     @Override
     public void loadOrReplaceChunkData(int chunkX, int chunkY, int[][] tiles, List<WorldObject> objects) {
-        // Server should generate its own chunks, not accept them from clients
+        
         log.warn("Client attempted to send chunk data to server - ignoring");
 
     }

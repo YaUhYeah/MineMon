@@ -1,128 +1,117 @@
-buildscript {
-  repositories {
-    mavenCentral()
-    gradlePluginPortal()
-    google()
-  }
-}
-// We keep the android application plugin only:
 plugins {
-  id("com.android.application")
+  id 'com.android.application'
+  id 'io.freefair.lombok' version '8.3'
 }
 
-android {
-  namespace = "io.github.minemon"
-  compileSdk = 34
-
-  // Standard LibGDX source set logic
-  sourceSets {
-    main {
-      manifest.srcFile 'AndroidManifest.xml'
-      java.srcDirs 'src/main/java'
-      aidl.srcDirs 'src/main/java'
-      renderscript.srcDirs 'src/main/java'
-      res.srcDirs 'res'
-      assets.srcDirs '../assets'
-      jniLibs.srcDirs 'libs'
-    }
-  }
-
-  // Try to remove massive pickFirst rules for Spring/Hibernate:
-  packagingOptions {
-    resources {
-      excludes += [
-        "META-INF/robovm/ios/robovm.xml",
-        "META-INF/DEPENDENCIES.txt",
-        "META-INF/DEPENDENCIES",
-        "META-INF/dependencies.txt",
-        "**/*.gwt.xml"
-      ]
-      // If you still have conflicts from LWJGL or other libs:
-      pickFirsts += [
-        "META-INF/LICENSE.txt",
-        "META-INF/LICENSE",
-        "META-INF/NOTICE",
-        "META-INF/notice.txt",
-        "META-INF/native-image/org.lwjgl/lwjgl/jni-config.json"
-      ]
-      pickFirst "**/*.properties"
-      // If you truly need to pickFirst everything else, you can do:
-      // pickFirst "**/*.properties"
-      // But ideally keep these minimal
-    }
-  }
-
-  defaultConfig {
-    applicationId = "io.github.minemon"
-    minSdkVersion(26)
-    targetSdkVersion(34)
-    versionCode = 1
-    versionName = "1.0"
-    multiDexEnabled = true
-  }
-
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-    coreLibraryDesugaringEnabled = true
-  }
-
-  buildTypes {
-    release {
-      minifyEnabled = true
-      proguardFiles(
-        getDefaultProguardFile("proguard-android.txt"),
-        "proguard-rules.pro"
-      )
-    }
-  }
-}
-
-repositories {
-  google()
-  mavenCentral()
-}
+def gdxVersion = "1.13.0"
+def springVersion = "3.1.4"
 
 configurations {
   natives
+
+  // Exclude H2 database
+  all*.exclude group: 'com.h2database'
+
+  // Add other exclusions if needed
+  all*.exclude module: 'spring-boot-starter-jdbc'
+}
+
+android {
+  namespace "io.github.minemon"
+  compileSdk 34
+
+  defaultConfig {
+    applicationId "io.github.minemon"
+    minSdk 26
+    targetSdk 34
+    versionCode 1
+    versionName "1.0"
+
+    multiDexEnabled true
+
+    ndk {
+      abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'
+    }
+  }
+
+  sourceSets {
+    main {
+      manifest.srcFile 'AndroidManifest.xml'
+      java.srcDirs = ['src']
+      aidl.srcDirs = ['src']
+      renderscript.srcDirs = ['src']
+      res.srcDirs = ['res']
+      assets.srcDirs = ['assets']
+      jniLibs.srcDirs = ['libs']
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+    encoding = 'UTF-8'
+  }
+  packagingOptions {
+    jniLibs {
+      pickFirsts += ['META-INF/proguard/*']
+    }
+    resources {
+      excludes += ['META-INF/spring.factories', 'META-INF/spring.handlers', 'META-INF/spring.schemas', 'META-INF/spring.tooling', 'META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/license.txt', 'META-INF/NOTICE', 'META-INF/notice.txt', 'META-INF/ASL2.0', 'META-INF/**/module-info.class', 'META-INF/io.netty.versions.properties']
+      pickFirsts += ['META-INF/INDEX.LIST', 'META-INF/MANIFEST.MF', 'META-INF/proguard/*', 'notice.txt', 'META-INF/notice.txt', 'META-INF/LICENSE.md', '**/*.md', '**/*.json', '**/*.txt', '**/*.sha1', '**/*.properties', 'META-INF/spring/aot.factories']
+    }
+  }
+
+
+  lint {
+    abortOnError false
+  }
 }
 
 dependencies {
-  // LibGDX Android runtime
-  implementation("com.badlogicgames.gdx:gdx-backend-android:$gdxVersion")
+  implementation project(':core')
 
-  // If you have a separate project for LWJGL3 (desktop),
-  // you can still reference it here if it doesn't bring server libs
-  implementation(project(":lwjgl3"))
+  // LibGDX
+  implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
+  implementation "com.badlogicgames.gdx:gdx:$gdxVersion"
 
-  // The shared core code
-  implementation(project(":core"))
+  // LibGDX natives
+  natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
+  natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
+  natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86"
+  natives "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86_64"
 
-  // For Java 8+ API backports
-  coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+  // Android Support
+  implementation 'androidx.appcompat:appcompat:1.6.1'
+  implementation 'androidx.multidex:multidex:2.0.1'
 
-  // Native dependencies for LibGDX (ARM, x86, etc.)
-  natives("com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a")
-  natives("com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a")
-  natives("com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86")
-  natives("com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-x86_64")
+  // Spring (minimal set)
+  implementation "org.springframework:spring-core:$springVersion"
+  implementation "org.springframework:spring-context:$springVersion"
+
+  // Logging
+  implementation 'com.github.tony19:logback-android:3.0.0'
+  implementation 'org.slf4j:slf4j-api:2.0.9'
+
+  // Lombok
+  compileOnly "org.projectlombok:lombok:1.18.30"
+  annotationProcessor "org.projectlombok:lombok:1.18.30"
 }
 
-// Extract native .so files
-tasks.register("copyAndroidNatives") {
-  doFirst {
+// Native libraries task
+task copyAndroidNatives {
+  doLast {
     file("libs/armeabi-v7a/").mkdirs()
     file("libs/arm64-v8a/").mkdirs()
     file("libs/x86_64/").mkdirs()
     file("libs/x86/").mkdirs()
 
-    configurations.natives.copy().files.each { jar ->
+    configurations.natives.files.each { jar ->
       def outputDir = null
-      if (jar.name.endsWith("natives-armeabi-v7a.jar")) outputDir = file("libs/armeabi-v7a")
-      if (jar.name.endsWith("natives-arm64-v8a.jar")) outputDir = file("libs/arm64-v8a")
-      if (jar.name.endsWith("natives-x86_64.jar")) outputDir = file("libs/x86_64")
-      if (jar.name.endsWith("natives-x86.jar")) outputDir = file("libs/x86")
-      if (outputDir != null) {
+      if(jar.name.endsWith("natives-arm64-v8a.jar")) outputDir = file("libs/arm64-v8a")
+      if(jar.name.endsWith("natives-armeabi-v7a.jar")) outputDir = file("libs/armeabi-v7a")
+      if(jar.name.endsWith("natives-x86_64.jar")) outputDir = file("libs/x86_64")
+      if(jar.name.endsWith("natives-x86.jar")) outputDir = file("libs/x86")
+      if(outputDir != null) {
         copy {
           from zipTree(jar)
           into outputDir
@@ -133,30 +122,11 @@ tasks.register("copyAndroidNatives") {
   }
 }
 
-tasks.matching {
-  it.name.contains("merge") && it.name.contains("JniLibFolders")
-}.configureEach { packageTask ->
-  packageTask.dependsOn("copyAndroidNatives")
+// Add these task dependencies
+tasks.matching { it.name.contains("merge") && it.name.contains("JniLibFolders") }.configureEach { task ->
+  task.dependsOn 'copyAndroidNatives'
 }
 
-// Just an example 'run' task to start the activity via ADB
-tasks.register("run", Exec) {
-  def path
-  def localProperties = project.file("../local.properties")
-  if (localProperties.exists()) {
-    Properties properties = new Properties()
-    localProperties.withInputStream { instr ->
-      properties.load(instr)
-    }
-    def sdkDir = properties.getProperty("sdk.dir")
-    path = sdkDir ?: "$System.env.ANDROID_SDK_ROOT"
-  } else {
-    path = "$System.env.ANDROID_SDK_ROOT"
-  }
-  def adb = "${path}/platform-tools/adb"
-  commandLine(adb, "shell", "am", "start",
-    "-n", "io.github.minemon/io.github.minemon.android.AndroidLauncher")
+tasks.matching { it.name.contains("package") && it.name.contains("Debug") }.configureEach { task ->
+  task.dependsOn 'copyAndroidNatives'
 }
-
-// If you use Eclipse
-eclipse.project.name = appName + "-android"
