@@ -65,6 +65,15 @@ subprojects {
   ext.appName = 'MineMon'
   configurations.configureEach {
     exclude group: 'ch.qos.logback', module: 'logback-classic'
+    exclude group: 'org.springframework', module: 'spring-jcl'
+  }
+  
+  repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://s01.oss.sonatype.org' }
+    maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
+    maven { url 'https://s01.oss.sonatype.org/content/repositories/snapshots/' }
   }
 
 }
