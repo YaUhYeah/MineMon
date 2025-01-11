@@ -43,14 +43,26 @@ public class AndroidLauncher extends AndroidApplication {
             config.useWakelock = true;
 
             
+            // Initialize Android-specific context
             GameApplicationContext.initContext(true);
-
             
+            // Initialize Android file system
+            AndroidInitializer initializer = new AndroidInitializer(this);
+            initializer.ensureDirectories();
+            
+            // Get game instance
             GdxGame game = GameApplicationContext.getBean(GdxGame.class);
-
             
+            // Setup Android input
+            InputService inputService = GameApplicationContext.getBean(InputService.class);
+            inputService.setAndroidMode(true);
+            
+            // Initialize game
             initialize(game, config);
-
+            
+            // Initialize graphics context
+            initializer.validateGraphicsContext();
+            
             log.info("AndroidLauncher initialized successfully");
 
         } catch (Exception e) {

@@ -73,7 +73,7 @@ public class AndroidGameContext {
     }
     private static void registerCoreBeans() {
         try {
-            
+            // Core configuration
             GameConfig gameConfig = new GameConfig();
             register(gameConfig);
 
@@ -83,10 +83,14 @@ public class AndroidGameContext {
             PlayerProperties playerProperties = new PlayerProperties();
             register(playerProperties);
 
+            // Input handling
             InputConfiguration inputConfig = new InputConfiguration();
             register(inputConfig);
-
             
+            AndroidTouchInput touchInput = new AndroidTouchInput(new InputService(inputConfig));
+            register(touchInput);
+            
+            // Event handling
             ApplicationEventPublisher eventPublisher = new AndroidEventPublisher();
             register(ApplicationEventPublisher.class, eventPublisher);
 

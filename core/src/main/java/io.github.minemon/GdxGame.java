@@ -46,10 +46,16 @@ public class GdxGame extends Game {
                 throw new RuntimeException("Application context is null");
             }
 
-            
+            // Initialize core services
             log.info("Initializing core services...");
             context.getBean(SettingsService.class).initialize();
             context.getBean(UiService.class).initialize();
+            
+            // Initialize Android-specific UI if needed
+            if (isAndroid) {
+                AndroidTouchInput touchInput = context.getBean(AndroidTouchInput.class);
+                touchInput.initialize(AndroidUIFactory.createTouchpadStyle());
+            }
 
             log.info("Initializing world services...");
             context.getBean(TileManager.class).initIfNeeded();
@@ -85,7 +91,18 @@ public class GdxGame extends Game {
 
     @Override
     public void render() {
-        super.render(); 
+        super.render();
+        
+        // Update and render Android touch controls if needed
+        if (isAndroid) {
+            try {
+                AndroidTouchInput touchInput = GameApplicationContext.getBean(AndroidTouchInput.class);
+                touchInput.update();
+                touchInput.render();
+            } catch (Exception e) {
+                log.error("Error updating Android touch controls", e);
+            }
+        }
     }
 
     @Override
