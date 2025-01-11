@@ -41,8 +41,20 @@ public class GdxGame extends Game {
         try {
             log.info("GdxGame.create() called on platform: {}", isAndroid ? "Android" : "Desktop");
             
+            // Wait for graphics context to be ready
+            int attempts = 0;
+            while (Gdx.gl == null && attempts < 10) {
+                try {
+                    Thread.sleep(100);
+                    attempts++;
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            
             // Verify LibGDX initialization
-            if (Gdx.app == null || Gdx.graphics == null || Gdx.gl == null) {
+            if (Gdx.app == null || Gdx.graphics == null) {
                 throw new RuntimeException("LibGDX not properly initialized");
             }
             

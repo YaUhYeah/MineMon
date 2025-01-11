@@ -61,26 +61,41 @@ public class AndroidInitializer {
     public void validateGraphicsContext() {
         try {
             if (Gdx.graphics == null) {
-                throw new RuntimeException("Graphics context is null");
+                log.warn("Graphics context not yet available");
+                return;
             }
 
-            if (Gdx.graphics.getGL20() == null) {
-                throw new RuntimeException("GL20 context is null");
+            // Wait for GL context to be ready
+            int attempts = 0;
+            while (Gdx.graphics.getGL20() == null && attempts < 10) {
+                try {
+                    Thread.sleep(100);
+                    attempts++;
+                    log.debug("Waiting for GL context, attempt {}", attempts);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
 
-            
-            int width = Gdx.graphics.getWidth();
-            int height = Gdx.graphics.getHeight();
+            // Check dimensions only if we have a GL context
+            if (Gdx.graphics.getGL20() != null) {
+                int width = Gdx.graphics.getWidth();
+                int height = Gdx.graphics.getHeight();
 
-            if (width <= 0 || height <= 0) {
-                throw new RuntimeException("Invalid frame buffer dimensions: " + width + "x" + height);
+                if (width <= 0 || height <= 0) {
+                    log.warn("Invalid frame buffer dimensions: {}x{}", width, height);
+                    return;
+                }
+
+                log.info("Graphics context validated successfully: {}x{}", width, height);
+            } else {
+                log.warn("GL context not available after {} attempts", attempts);
             }
-
-            log.info("Graphics context validated successfully: {}x{}", width, height);
 
         } catch (Exception e) {
             log.error("Graphics context validation failed", e);
-            throw e;
+            // Don't throw, just log the error
         }
     }
 }

@@ -79,12 +79,20 @@ public class AndroidLauncher extends AndroidApplication {
             InputService inputService = GameApplicationContext.getBean(InputService.class);
             inputService.setAndroidMode(true);
             
+            // Initialize game with proper Android paths
+            File externalDir = getExternalFilesDir(null);
+            if (externalDir == null) {
+                throw new RuntimeException("External storage not available");
+            }
+            
+            // Set system properties for file paths
+            System.setProperty("user.home", externalDir.getAbsolutePath());
+            System.setProperty("user.dir", externalDir.getAbsolutePath());
+            
             // Initialize game
             initialize(game, config);
             
-            // Initialize graphics context
-            initializer.validateGraphicsContext();
-            
+            // Graphics context will be initialized in the create() method
             log.info("AndroidLauncher initialized successfully");
 
         } catch (Exception e) {
