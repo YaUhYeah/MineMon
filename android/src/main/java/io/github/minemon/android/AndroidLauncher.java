@@ -18,8 +18,19 @@ public class AndroidLauncher extends AndroidApplication {
     private AndroidInitializer initializer;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Initialize logging first
+        try {
+            AndroidLoggerFactory.init();
+            log.info("Logging initialized");
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("Failed to initialize logging: " + e.getMessage());
+        }
+
+        // Set global exception handler
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
             log.error("Uncaught exception in thread " + thread.getName(), throwable);
+            throwable.printStackTrace();
             finish();
         });
         
@@ -27,6 +38,11 @@ public class AndroidLauncher extends AndroidApplication {
 
         try {
             log.info("Starting AndroidLauncher onCreate");
+            
+            // Ensure external storage is available
+            if (getExternalFilesDir(null) == null) {
+                throw new RuntimeException("External storage not available");
+            }
             
             requestWindowFeature(Window.FEATURE_NO_TITLE);
             getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
