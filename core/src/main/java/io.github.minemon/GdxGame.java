@@ -40,21 +40,43 @@ public class GdxGame extends Game {
     public void create() {
         try {
             log.info("GdxGame.create() called on platform: {}", isAndroid ? "Android" : "Desktop");
-
+            
+            // Verify LibGDX initialization
+            if (Gdx.app == null || Gdx.graphics == null || Gdx.gl == null) {
+                throw new RuntimeException("LibGDX not properly initialized");
+            }
+            
+            // Get application context
             ApplicationContext context = GameApplicationContext.getContext();
             if (context == null) {
                 throw new RuntimeException("Application context is null");
             }
-
-            // Initialize core services
+            
+            // Initialize core services in a safe order
             log.info("Initializing core services...");
-            context.getBean(SettingsService.class).initialize();
-            context.getBean(UiService.class).initialize();
+            try {
+                context.getBean(SettingsService.class).initialize();
+            } catch (Exception e) {
+                log.error("Failed to initialize SettingsService", e);
+                throw e;
+            }
+            
+            try {
+                context.getBean(UiService.class).initialize();
+            } catch (Exception e) {
+                log.error("Failed to initialize UiService", e);
+                throw e;
+            }
             
             // Initialize Android-specific UI if needed
             if (isAndroid) {
-                AndroidTouchInput touchInput = context.getBean(AndroidTouchInput.class);
-                touchInput.initialize(AndroidUIFactory.createTouchpadStyle());
+                try {
+                    AndroidTouchInput touchInput = context.getBean(AndroidTouchInput.class);
+                    touchInput.initialize(AndroidUIFactory.createTouchpadStyle());
+                } catch (Exception e) {
+                    log.error("Failed to initialize Android touch input", e);
+                    // Don't throw here, app can still work without touch input
+                }
             }
 
             log.info("Initializing world services...");

@@ -29,14 +29,44 @@ public class AndroidTouchInput extends InputAdapter {
     private Vector2 lastKnownDirection = new Vector2();
 
     public void initialize(TouchpadStyle touchpadStyle) {
-        touchpad = new Touchpad(10, touchpadStyle);
-        touchpad.setBounds(50, 50, VIRTUAL_PAD_SIZE, VIRTUAL_PAD_SIZE);
-        
-        stage = new Stage();
-        stage.addActor(touchpad);
-        
-        Gdx.input.setInputProcessor(stage);
-        enabled = true;
+        try {
+            if (Gdx.graphics == null || Gdx.input == null) {
+                log.error("Cannot initialize touch input - LibGDX not initialized");
+                return;
+            }
+            
+            if (stage != null) {
+                log.info("Touch input already initialized");
+                return;
+            }
+            
+            touchpad = new Touchpad(10, touchpadStyle);
+            float screenWidth = Gdx.graphics.getWidth();
+            float screenHeight = Gdx.graphics.getHeight();
+            touchpad.setBounds(50, 50, 
+                Math.min(VIRTUAL_PAD_SIZE, screenWidth * 0.3f),
+                Math.min(VIRTUAL_PAD_SIZE, screenHeight * 0.3f));
+            
+            stage = new Stage();
+            stage.addActor(touchpad);
+            
+            // Preserve any existing input processor
+            if (Gdx.input.getInputProcessor() != null) {
+                log.info("Existing input processor found, preserving it");
+            }
+            
+            Gdx.input.setInputProcessor(stage);
+            enabled = true;
+            log.info("Android touch input initialized successfully");
+            
+        } catch (Exception e) {
+            log.error("Failed to initialize touch input", e);
+            enabled = false;
+            if (stage != null) {
+                stage.dispose();
+                stage = null;
+            }
+        }
     }
 
     public void update() {

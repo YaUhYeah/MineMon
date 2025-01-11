@@ -18,9 +18,15 @@ public class AndroidLauncher extends AndroidApplication {
     private AndroidInitializer initializer;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            log.error("Uncaught exception in thread " + thread.getName(), throwable);
+            finish();
+        });
+        
         super.onCreate(savedInstanceState);
 
         try {
+            log.info("Starting AndroidLauncher onCreate");
             
             requestWindowFeature(Window.FEATURE_NO_TITLE);
             getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
