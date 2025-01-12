@@ -228,13 +228,24 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         fbo.end();
 
 
-        FileHandle dir = Gdx.files.local(getActualSaveDir() + worldName);
+        FileHandle dir;
+        if (isAndroid()) {
+            dir = Gdx.files.external("Android/data/io.github.minemon/files/save/worlds/" + worldName);
+        } else {
+            dir = Gdx.files.local(getActualSaveDir() + worldName);
+        }
+        
         if (!dir.exists()) {
             dir.mkdirs();
         }
 
-        FileHandle iconFile = Gdx.files.local(getActualSaveDir() + worldName + "/icon.png");
-        PixmapIO.writePNG(iconFile, pm);
+        FileHandle iconFile = dir.child("icon.png");
+        try {
+            PixmapIO.writePNG(iconFile, pm);
+            log.info("Generated world thumbnail for '{}' at {}", worldName, iconFile.path());
+        } catch (Exception e) {
+            log.error("Failed to save world thumbnail for '{}': {}", worldName, e.getMessage());
+        }
 
         pm.dispose();
         batch.dispose();
