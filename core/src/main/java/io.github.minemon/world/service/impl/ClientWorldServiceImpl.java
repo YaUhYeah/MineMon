@@ -43,14 +43,13 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     private static final long CHUNK_REQUEST_TIMEOUT = 2000;
     private static final long URGENT_REQUEST_TIMEOUT = 1000;
     private final WorldGenerator worldGenerator;
-    @Autowired
-    @Lazy
     private final WorldObjectManager worldObjectManager;
     private final TileManager tileManager;
     private final ObjectTextureManager objectTextureManager;
     private final BiomeConfigurationLoader biomeLoader;
     private final BiomeService biomeService;
-    private final JsonWorldDataService jsonWorldDataService;  
+    private final JsonWorldDataService jsonWorldDataService;
+    private final FileAccessService fileAccessService;
     private final WorldData worldData = new WorldData();
     private final Map<String, Long> chunkRequestTimes = new ConcurrentHashMap<>();
     private final Set<Vector2> failedRequests = Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -99,7 +98,8 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         BiomeConfigurationLoader biomeLoader,
         BiomeService biomeService,
         ObjectTextureManager objectTextureManager,
-        @Qualifier("clientJsonWorldDataService") JsonWorldDataService jsonWorldDataService
+        @Qualifier("clientJsonWorldDataService") JsonWorldDataService jsonWorldDataService,
+        FileAccessService fileAccessService
     ) {
         this.worldGenerator = worldGenerator;
         this.worldObjectManager = worldObjectManager;
@@ -108,6 +108,7 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         this.biomeService = biomeService;
         this.objectTextureManager = objectTextureManager;
         this.jsonWorldDataService = jsonWorldDataService;
+        this.fileAccessService = fileAccessService;
     }
 
     @Override
