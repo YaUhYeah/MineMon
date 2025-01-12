@@ -62,10 +62,35 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     
     private String getActualSaveDir() {
         String basePath = System.getProperty("user.home", ".");
+        
         // For Android, use the external files directory path directly
         if (System.getProperty("java.vm.name", "").contains("Dalvik")) {
-            return basePath + "/save/worlds/";
+            // Ensure the directory exists and is writable
+            File worldsDir = new File(basePath, "save/worlds");
+            if (!worldsDir.exists()) {
+                if (!worldsDir.mkdirs()) {
+                    log.error("Failed to create worlds directory: {}", worldsDir.getAbsolutePath());
+                    throw new RuntimeException("Failed to create worlds directory: " + worldsDir.getAbsolutePath());
+                }
+            }
+            
+            // Test write access
+            File testFile = new File(worldsDir, ".test");
+            try {
+                if (testFile.createNewFile()) {
+                    testFile.delete();
+                    log.info("Worlds directory is writable: {}", worldsDir.getAbsolutePath());
+                } else {
+                    throw new RuntimeException("Cannot write to worlds directory: " + worldsDir.getAbsolutePath());
+                }
+            } catch (IOException e) {
+                log.error("Cannot write to worlds directory: {}", worldsDir.getAbsolutePath(), e);
+                throw new RuntimeException("Cannot write to worlds directory: " + worldsDir.getAbsolutePath(), e);
+            }
+            
+            return worldsDir.getAbsolutePath() + "/";
         }
+        
         return basePath + "/" + saveDir;
     }
     private boolean initialized = false;

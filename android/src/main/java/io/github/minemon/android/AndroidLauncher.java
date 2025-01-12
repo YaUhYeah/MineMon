@@ -15,7 +15,12 @@ import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration;
 import com.badlogic.gdx.backends.android.AndroidGraphics;
 import io.github.minemon.GdxGame;
 import io.github.minemon.context.GameApplicationContext;
+import io.github.minemon.input.AndroidTouchInput;
+import io.github.minemon.input.InputService;
+import io.github.minemon.ui.AndroidUIFactory;
 import lombok.extern.slf4j.Slf4j;
+import java.io.File;
+import java.io.IOException;
 
 @Slf4j
 public class AndroidLauncher extends AndroidApplication {
@@ -114,22 +119,48 @@ public class AndroidLauncher extends AndroidApplication {
                 }
             }
             
+            if (!hasStoragePermissions()) {
+                String msg = "Storage permissions not granted after timeout";
+                log.error(msg);
+                throw new RuntimeException(msg);
+            }
+            
             // Ensure external storage is available and writable
             File externalDir = getExternalFilesDir(null);
             if (externalDir == null) {
-                throw new RuntimeException("External storage not available");
+                String msg = "External storage not available";
+                log.error(msg);
+                throw new RuntimeException(msg);
             }
             
-            // Test write access
-            File testFile = new File(externalDir, "test.tmp");
-            try {
-                if (testFile.createNewFile()) {
-                    testFile.delete();
-                } else {
-                    throw new RuntimeException("Cannot write to external storage");
+            // Test write access with retries
+            boolean writeSuccess = false;
+            IOException lastException = null;
+            for (int i = 0; i < 3; i++) {
+                File testFile = new File(externalDir, "test.tmp");
+                try {
+                    if (testFile.createNewFile()) {
+                        testFile.delete();
+                        writeSuccess = true;
+                        log.info("External storage is writable");
+                        break;
+                    }
+                } catch (IOException e) {
+                    lastException = e;
+                    log.warn("Write test attempt {} failed: {}", i + 1, e.getMessage());
+                    try {
+                        Thread.sleep(100); // Short delay before retry
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
                 }
-            } catch (IOException e) {
-                throw new RuntimeException("Cannot write to external storage: " + e.getMessage());
+            }
+            
+            if (!writeSuccess) {
+                String msg = "Cannot write to external storage after retries";
+                log.error(msg, lastException);
+                throw new RuntimeException(msg, lastException);
             }
             
             requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -138,19 +169,7 @@ public class AndroidLauncher extends AndroidApplication {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
 
             
-            AndroidApplicationConfiguration config = new AndroidApplicationConfiguration();
-            config.useImmersiveMode = true;
-            config.useWakelock = true;
-            config.useGyroscope = false;
-            config.useCompass = false;
-            config.useAccelerometer = false;
-            config.numSamples = 0;  
-            config.r = 8;
-            config.g = 8;
-            config.b = 8;
-            config.a = 8;
-            config.depth = 16;
-            config.useWakelock = true;
+            AndroidApplicationConfiguration config = createConfig();
 
             
             // Initialize Android-specific context

@@ -19,8 +19,9 @@ public class AndroidInitializer {
             // Get external storage directory
             File externalDir = context.getExternalFilesDir(null);
             if (externalDir == null) {
-                log.error("Failed to get external files directory");
-                return;
+                String msg = "Failed to get external files directory";
+                log.error(msg);
+                throw new RuntimeException(msg);
             }
 
             String basePath = externalDir.getAbsolutePath();
@@ -40,37 +41,56 @@ public class AndroidInitializer {
                 File dirFile = new File(externalDir, dir);
                 if (!dirFile.exists()) {
                     if (!dirFile.mkdirs()) {
-                        log.error("Failed to create directory: {}", dirFile.getAbsolutePath());
-                        throw new RuntimeException("Failed to create directory: " + dirFile.getAbsolutePath());
+                        String msg = "Failed to create directory: " + dirFile.getAbsolutePath();
+                        log.error(msg);
+                        throw new RuntimeException(msg);
                     }
                 }
                 
                 // Ensure directory is writable
                 if (!dirFile.canWrite()) {
-                    log.error("Directory not writable: {}", dirFile.getAbsolutePath());
-                    throw new RuntimeException("Directory not writable: " + dirFile.getAbsolutePath());
+                    String msg = "Directory not writable: " + dirFile.getAbsolutePath();
+                    log.error(msg);
+                    throw new RuntimeException(msg);
                 }
                 
-                // Test write access
-                File testFile = new File(dirFile, ".test");
-                try {
-                    if (testFile.createNewFile()) {
-                        testFile.delete();
-                        log.info("Directory ready and writable: {}", dirFile.getAbsolutePath());
-                    } else {
-                        throw new RuntimeException("Cannot write to directory: " + dirFile.getAbsolutePath());
+                // Test write access with retries
+                boolean writeSuccess = false;
+                IOException lastException = null;
+                for (int i = 0; i < 3; i++) {
+                    File testFile = new File(dirFile, ".test");
+                    try {
+                        if (testFile.createNewFile()) {
+                            testFile.delete();
+                            writeSuccess = true;
+                            log.info("Directory ready and writable: {}", dirFile.getAbsolutePath());
+                            break;
+                        }
+                    } catch (IOException e) {
+                        lastException = e;
+                        log.warn("Write test attempt {} failed for directory: {}", i + 1, dirFile.getAbsolutePath());
+                        try {
+                            Thread.sleep(100); // Short delay before retry
+                        } catch (InterruptedException ie) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        }
                     }
-                } catch (IOException e) {
-                    log.error("Failed to write test file in directory: {}", dirFile.getAbsolutePath(), e);
-                    throw new RuntimeException("Cannot write to directory: " + dirFile.getAbsolutePath(), e);
+                }
+                
+                if (!writeSuccess) {
+                    String msg = "Cannot write to directory after retries: " + dirFile.getAbsolutePath();
+                    log.error(msg, lastException);
+                    throw new RuntimeException(msg, lastException);
                 }
             }
 
             // Set system properties
             System.setProperty("java.io.tmpdir", new File(basePath, "temp").getAbsolutePath());
             System.setProperty("user.home", basePath);
-            System.setProperty("user.dir", basePath);
-
+            
+            // Don't set user.dir as it's read-only on Android
+            
             log.info("All directories created and validated successfully");
 
         } catch (Exception e) {
