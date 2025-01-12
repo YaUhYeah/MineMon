@@ -59,6 +59,15 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     @Value("${world.saveDir:save/worlds/}")
     private String saveDir;
     
+    private boolean isAndroid() {
+        try {
+            Class.forName("android.os.Build");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
     private String getActualSaveDir() {
         try {
             // First ensure the base directories exist
@@ -66,7 +75,12 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             fileAccessService.ensureDirectoryExists("save/worlds");
             
             // Get the full path for logging
-            String worldsPath = fileAccessService.getBasePath() + "/save/worlds";
+            String worldsPath;
+            if (isAndroid()) {
+                worldsPath = "Android/data/io.github.minemon/files/save/worlds";
+            } else {
+                worldsPath = fileAccessService.getBasePath() + "/save/worlds";
+            }
             log.info("Using worlds directory: {}", worldsPath);
             
             // Test write access
