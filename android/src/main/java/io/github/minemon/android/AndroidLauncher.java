@@ -187,11 +187,15 @@ public class AndroidLauncher extends AndroidApplication {
             AndroidApplicationConfiguration config = createConfig();
 
 
-            // Initialize Android-specific context with Android profile
-            System.setProperty("spring.profiles.active", "android");
-            GameApplicationContext.initContext(true);
+            // Initialize Android file system and copy assets first
+            AndroidInitializer initializer = new AndroidInitializer(this);
+            initializer.ensureDirectories();
+            initializer.copyAssets();  // Always copy assets to ensure they're up to date
 
-            // Load native libraries first
+            // Set Android profile
+            System.setProperty("spring.profiles.active", "android");
+            
+            // Load native libraries
             try {
                 System.loadLibrary("gdx");
                 System.loadLibrary("gdx-freetype");
@@ -200,23 +204,25 @@ public class AndroidLauncher extends AndroidApplication {
                 throw new RuntimeException("Failed to load native libraries", e);
             }
 
-            // Initialize Android file system
-            AndroidInitializer initializer = new AndroidInitializer(this);
-            initializer.ensureDirectories();
-            
-            // Copy assets to external storage if needed
-            initializer.copyAssetsIfNeeded();
+            // Initialize Android context
+            try {
+                AndroidGameContext.initMinimal();
+                AndroidGameContext.initServices();
+            } catch (Exception e) {
+                log.error("Failed to initialize Android game context", e);
+                throw new RuntimeException("Failed to initialize Android game context", e);
+            }
 
             // Get game instance
-            GdxGame game = GameApplicationContext.getBean(GdxGame.class);
+            GdxGame game = AndroidGameContext.getBean(GdxGame.class);
 
             // Setup Android input
-            InputService inputService = GameApplicationContext.getBean(InputService.class);
+            InputService inputService = AndroidGameContext.getBean(InputService.class);
             inputService.setAndroidMode(true);
 
             // Initialize Android touch input
             try {
-                AndroidTouchInput touchInput = GameApplicationContext.getBean(AndroidTouchInput.class);
+                AndroidTouchInput touchInput = AndroidGameContext.getBean(AndroidTouchInput.class);
                 touchInput.initialize(AndroidUIFactory.createTouchpadStyle());
             } catch (Exception e) {
                 log.warn("Failed to initialize touch input early", e);
