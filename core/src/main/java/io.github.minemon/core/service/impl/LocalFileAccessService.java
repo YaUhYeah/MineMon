@@ -58,4 +58,23 @@ public class LocalFileAccessService implements FileAccessService {
             return false;
         }
     }
+
+    @Override
+    public void ensureDirectoryExists(String path) {
+        if (Gdx.files == null) {
+            throw new IllegalStateException("LibGDX not initialized");
+        }
+        FileHandle dir = Gdx.files.local(path);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+    }
+
+    @Override
+    public String getBasePath() {
+        if (Gdx.files == null) {
+            throw new IllegalStateException("LibGDX not initialized");
+        }
+        return Gdx.files.getLocalStoragePath();
+    }
 }
