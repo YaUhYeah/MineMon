@@ -17,14 +17,6 @@ import org.springframework.stereotype.Component;
 @Component("androidTouchInput")
 @RequiredArgsConstructor
 public class AndroidTouchInput extends InputAdapter {
-    private static AndroidTouchInput instance;
-    
-    public static synchronized AndroidTouchInput getInstance(InputService inputService) {
-        if (instance == null) {
-            instance = new AndroidTouchInput(inputService);
-        }
-        return instance;
-    }
     private static final float DEADZONE = 0.2f;
     private static final float VIRTUAL_PAD_SIZE = 200f;
     

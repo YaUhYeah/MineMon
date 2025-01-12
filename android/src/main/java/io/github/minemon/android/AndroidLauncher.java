@@ -79,6 +79,15 @@ public class AndroidLauncher extends AndroidApplication {
             InputService inputService = GameApplicationContext.getBean(InputService.class);
             inputService.setAndroidMode(true);
             
+            // Initialize Android touch input
+            try {
+                AndroidTouchInput touchInput = GameApplicationContext.getBean(AndroidTouchInput.class);
+                touchInput.initialize(AndroidUIFactory.createTouchpadStyle());
+            } catch (Exception e) {
+                log.warn("Failed to initialize touch input early", e);
+                // Not critical, will try again in GdxGame
+            }
+            
             // Initialize game with proper Android paths
             File externalDir = getExternalFilesDir(null);
             if (externalDir == null) {
