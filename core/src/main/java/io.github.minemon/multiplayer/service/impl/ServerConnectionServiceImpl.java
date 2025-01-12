@@ -26,7 +26,11 @@ public class ServerConnectionServiceImpl implements ServerConnectionService {
 
     @PostConstruct
     public void init() {
-        loadServersFromFile();
+        try {
+            loadServersFromFile();
+        } catch (Exception e) {
+            System.err.println("Error loading servers from file: " + e.getMessage());
+        }
 
         if (serverList.isEmpty()) {
             ServerConnectionConfig defaultServer = new ServerConnectionConfig();
@@ -41,6 +45,13 @@ public class ServerConnectionServiceImpl implements ServerConnectionService {
         }
 
         currentConfig = serverList.get(0);
+        
+        // Ensure the data directory exists
+        try {
+            fileAccessService.ensureDirectoryExists("data");
+        } catch (Exception e) {
+            System.err.println("Error creating data directory: " + e.getMessage());
+        }
     }
     @Override
     public void saveConfig(ServerConnectionConfig config) {

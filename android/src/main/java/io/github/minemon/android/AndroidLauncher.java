@@ -82,6 +82,11 @@ public class AndroidLauncher extends AndroidApplication {
     }
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Enable hardware acceleration
+        getWindow().setFlags(
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+        );
         // Initialize logging first
         try {
             AndroidLoggerFactory.init();
@@ -240,14 +245,18 @@ public class AndroidLauncher extends AndroidApplication {
         config.useWakelock = true;
         config.useGyroscope = false;
         config.useCompass = false;
-        config.numSamples = 0; 
+        config.numSamples = 2;  // Enable MSAA for better rendering
         config.r = 8;
         config.g = 8;
         config.b = 8;
         config.a = 8;
         config.depth = 16;
         config.stencil = 8;
-        config.useGL30 = false; 
+        config.useGL30 = false;
+        config.disableAudio = false;
+        config.maxSimultaneousSounds = 16;
+        config.useAccelerometer = false;
+        config.hideStatusBar = true;
         return config;
     }
 
