@@ -59,6 +59,11 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     private String defaultWorldName;
     @Value("${world.saveDir:save/worlds/}")
     private String saveDir;
+    
+    private String getActualSaveDir() {
+        String basePath = System.getProperty("user.home", ".");
+        return basePath + "/" + saveDir;
+    }
     private boolean initialized = false;
     @Autowired
     @Lazy
@@ -194,12 +199,12 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         fbo.end();
 
 
-        FileHandle dir = Gdx.files.local(saveDir + worldName);
+        FileHandle dir = Gdx.files.local(getActualSaveDir() + worldName);
         if (!dir.exists()) {
             dir.mkdirs();
         }
 
-        FileHandle iconFile = Gdx.files.local(saveDir + worldName + "/icon.png");
+        FileHandle iconFile = Gdx.files.local(getActualSaveDir() + worldName + "/icon.png");
         PixmapIO.writePNG(iconFile, pm);
 
         pm.dispose();
@@ -431,7 +436,7 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
             log.info("Created new world '{}' with seed {}", worldName, seed);
             return true;
         } catch (IOException e) {
-            log.error("Failed to create world '{}': {}", worldName, e.getMessage());
+            log.error("Failed to create world '{}': {} (saveDir={})", worldName, e.getMessage(), getActualSaveDir());
             return false;
         }
     }

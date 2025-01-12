@@ -1,9 +1,15 @@
 package io.github.minemon.android;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import com.badlogic.gdx.backends.android.AndroidApplication;
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration;
 import com.badlogic.gdx.backends.android.AndroidGraphics;
@@ -16,6 +22,41 @@ public class AndroidLauncher extends AndroidApplication {
     private GdxGame game;
     private boolean isInitialized = false;
     private AndroidInitializer initializer;
+    private static final int PERMISSION_REQUEST_CODE = 123;
+    
+    private void requestPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11 (API 30) and above
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    android.content.Intent intent = new android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    android.net.Uri uri = android.net.Uri.fromParts("package", getPackageName(), null);
+                    intent.setData(uri);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    log.error("Failed to request MANAGE_EXTERNAL_STORAGE permission", e);
+                }
+            }
+        } else {
+            // Below Android 11
+            String[] permissions = {
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            };
+            
+            boolean needsPermission = false;
+            for (String permission : permissions) {
+                if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                    needsPermission = true;
+                    break;
+                }
+            }
+            
+            if (needsPermission) {
+                ActivityCompat.requestPermissions(this, permissions, PERMISSION_REQUEST_CODE);
+            }
+        }
+    }
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // Initialize logging first
@@ -38,6 +79,9 @@ public class AndroidLauncher extends AndroidApplication {
 
         try {
             log.info("Starting AndroidLauncher onCreate");
+            
+            // Request permissions first
+            requestPermissions();
             
             // Ensure external storage is available
             if (getExternalFilesDir(null) == null) {
@@ -179,6 +223,25 @@ public class AndroidLauncher extends AndroidApplication {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus && isInitialized) {
             setupImmersiveMode();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            boolean allGranted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
+                }
+            }
+            if (!allGranted) {
+                log.error("Storage permissions not granted - game may not function correctly");
+            } else {
+                log.info("Storage permissions granted successfully");
+            }
         }
     }
 }

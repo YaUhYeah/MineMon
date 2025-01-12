@@ -276,7 +276,8 @@ public class AndroidGameContext {
             register(inventoryService);
 
             
-            JsonWorldDataService jsonWorldDataService = new JsonWorldDataService("save/worlds", false);
+            String worldsDir = System.getProperty("user.home", ".") + "/save/worlds";
+            JsonWorldDataService jsonWorldDataService = new JsonWorldDataService(worldsDir, false);
             register(jsonWorldDataService);
 
             WorldGeneratorImpl worldGenerator = new WorldGeneratorImpl(getBean(WorldConfig.class));
@@ -650,7 +651,8 @@ public class AndroidGameContext {
         register(inventoryService);
 
         
-        JsonWorldDataService jsonWorldDataService = new JsonWorldDataService("save/worlds", false);
+        String worldsDir = System.getProperty("user.home", ".") + "/save/worlds";
+        JsonWorldDataService jsonWorldDataService = new JsonWorldDataService(worldsDir, false);
         register(jsonWorldDataService);
 
         WorldGeneratorImpl worldGenerator = new WorldGeneratorImpl(worldConfig);
