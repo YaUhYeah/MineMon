@@ -16,7 +16,7 @@ public class AndroidInitializer {
 
     public void ensureDirectories() {
         try {
-            
+            // Get external storage directory
             File externalDir = context.getExternalFilesDir(null);
             if (externalDir == null) {
                 log.error("Failed to get external files directory");
@@ -24,16 +24,33 @@ public class AndroidInitializer {
             }
 
             String basePath = externalDir.getAbsolutePath();
+            log.info("Using base path: {}", basePath);
 
-            
-            createDirectory(new File(basePath, "save"));
-            createDirectory(new File(basePath, "cache"));
-            createDirectory(new File(basePath, "data"));
+            // Create required directories
+            String[] dirs = {
+                "save",
+                "save/worlds",
+                "save/players",
+                "cache",
+                "data",
+                "temp"
+            };
 
-            
+            for (String dir : dirs) {
+                File dirFile = new File(externalDir, dir);
+                if (!dirFile.exists() && !dirFile.mkdirs()) {
+                    log.error("Failed to create directory: {}", dirFile.getAbsolutePath());
+                } else {
+                    log.info("Directory ready: {}", dirFile.getAbsolutePath());
+                }
+            }
+
+            // Set system properties
             System.setProperty("java.io.tmpdir", new File(basePath, "temp").getAbsolutePath());
+            System.setProperty("user.home", basePath);
+            System.setProperty("user.dir", basePath);
 
-            
+            // Validate access
             validateDirectoryAccess(basePath);
 
         } catch (Exception e) {

@@ -123,6 +123,8 @@ public class GdxGame extends Game {
         }
     }
 
+    private AndroidTouchInput touchInput;
+
     @Override
     public void render() {
         super.render();
@@ -130,11 +132,17 @@ public class GdxGame extends Game {
         // Update and render Android touch controls if needed
         if (isAndroid) {
             try {
-                AndroidTouchInput touchInput = GameApplicationContext.getBean(AndroidTouchInput.class);
+                if (touchInput == null) {
+                    InputService inputService = GameApplicationContext.getBean(InputService.class);
+                    touchInput = AndroidTouchInput.getInstance(inputService);
+                }
                 touchInput.update();
                 touchInput.render();
             } catch (Exception e) {
-                log.error("Error updating Android touch controls", e);
+                // Only log once to avoid spam
+                if (touchInput == null) {
+                    log.error("Error updating Android touch controls", e);
+                }
             }
         }
     }
