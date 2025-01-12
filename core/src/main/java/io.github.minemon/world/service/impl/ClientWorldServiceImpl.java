@@ -62,6 +62,10 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     
     private String getActualSaveDir() {
         String basePath = System.getProperty("user.home", ".");
+        // For Android, use the external files directory path directly
+        if (System.getProperty("java.vm.name", "").contains("Dalvik")) {
+            return basePath + "/save/worlds/";
+        }
         return basePath + "/" + saveDir;
     }
     private boolean initialized = false;

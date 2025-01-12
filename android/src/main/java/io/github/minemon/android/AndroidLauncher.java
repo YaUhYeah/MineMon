@@ -24,6 +24,24 @@ public class AndroidLauncher extends AndroidApplication {
     private AndroidInitializer initializer;
     private static final int PERMISSION_REQUEST_CODE = 123;
     
+    private boolean hasStoragePermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.isExternalStorageManager();
+        } else {
+            String[] permissions = {
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            };
+            
+            for (String permission : permissions) {
+                if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
     private void requestPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Android 11 (API 30) and above
@@ -80,12 +98,38 @@ public class AndroidLauncher extends AndroidApplication {
         try {
             log.info("Starting AndroidLauncher onCreate");
             
-            // Request permissions first
+            // Request permissions first and wait for them to be granted
             requestPermissions();
             
-            // Ensure external storage is available
-            if (getExternalFilesDir(null) == null) {
+            // Wait for permissions to be granted (with timeout)
+            int attempts = 0;
+            while (!hasStoragePermissions() && attempts < 10) {
+                try {
+                    Thread.sleep(1000);
+                    attempts++;
+                    log.info("Waiting for storage permissions, attempt {}/10", attempts);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            
+            // Ensure external storage is available and writable
+            File externalDir = getExternalFilesDir(null);
+            if (externalDir == null) {
                 throw new RuntimeException("External storage not available");
+            }
+            
+            // Test write access
+            File testFile = new File(externalDir, "test.tmp");
+            try {
+                if (testFile.createNewFile()) {
+                    testFile.delete();
+                } else {
+                    throw new RuntimeException("Cannot write to external storage");
+                }
+            } catch (IOException e) {
+                throw new RuntimeException("Cannot write to external storage: " + e.getMessage());
             }
             
             requestWindowFeature(Window.FEATURE_NO_TITLE);

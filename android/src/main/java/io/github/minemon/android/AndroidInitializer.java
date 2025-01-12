@@ -26,7 +26,7 @@ public class AndroidInitializer {
             String basePath = externalDir.getAbsolutePath();
             log.info("Using base path: {}", basePath);
 
-            // Create required directories
+            // Create required directories with proper permissions
             String[] dirs = {
                 "save",
                 "save/worlds",
@@ -38,10 +38,31 @@ public class AndroidInitializer {
 
             for (String dir : dirs) {
                 File dirFile = new File(externalDir, dir);
-                if (!dirFile.exists() && !dirFile.mkdirs()) {
-                    log.error("Failed to create directory: {}", dirFile.getAbsolutePath());
-                } else {
-                    log.info("Directory ready: {}", dirFile.getAbsolutePath());
+                if (!dirFile.exists()) {
+                    if (!dirFile.mkdirs()) {
+                        log.error("Failed to create directory: {}", dirFile.getAbsolutePath());
+                        throw new RuntimeException("Failed to create directory: " + dirFile.getAbsolutePath());
+                    }
+                }
+                
+                // Ensure directory is writable
+                if (!dirFile.canWrite()) {
+                    log.error("Directory not writable: {}", dirFile.getAbsolutePath());
+                    throw new RuntimeException("Directory not writable: " + dirFile.getAbsolutePath());
+                }
+                
+                // Test write access
+                File testFile = new File(dirFile, ".test");
+                try {
+                    if (testFile.createNewFile()) {
+                        testFile.delete();
+                        log.info("Directory ready and writable: {}", dirFile.getAbsolutePath());
+                    } else {
+                        throw new RuntimeException("Cannot write to directory: " + dirFile.getAbsolutePath());
+                    }
+                } catch (IOException e) {
+                    log.error("Failed to write test file in directory: {}", dirFile.getAbsolutePath(), e);
+                    throw new RuntimeException("Cannot write to directory: " + dirFile.getAbsolutePath(), e);
                 }
             }
 
@@ -50,8 +71,7 @@ public class AndroidInitializer {
             System.setProperty("user.home", basePath);
             System.setProperty("user.dir", basePath);
 
-            // Validate access
-            validateDirectoryAccess(basePath);
+            log.info("All directories created and validated successfully");
 
         } catch (Exception e) {
             log.error("Failed to initialize directories", e);
