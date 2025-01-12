@@ -177,7 +177,8 @@ public class AndroidLauncher extends AndroidApplication {
             AndroidApplicationConfiguration config = createConfig();
 
             
-            // Initialize Android-specific context
+            // Initialize Android-specific context with Android profile
+            System.setProperty("spring.profiles.active", "android");
             GameApplicationContext.initContext(true);
             
             // Load native libraries first
