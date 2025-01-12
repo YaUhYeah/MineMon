@@ -137,13 +137,26 @@ public class GameScreen implements Screen {
     }
     @Override
     public void show() {
-        if (!worldRendererIsInitialized()) {
-            worldRenderer.initialize();
-        }
+        try {
+            if (!worldRendererIsInitialized()) {
+                worldRenderer.initialize();
+            }
 
-        hotbarUI.initialize();
-        handlingDisconnect = false;
-        isActuallyMultiplayer = worldService.isMultiplayerMode();
+            // Ensure HotbarUI is initialized
+            if (hotbarUI == null) {
+                log.error("HotbarUI is null - attempting to get from context");
+                hotbarUI = GameApplicationContext.getBean(HotbarUI.class);
+            }
+            hotbarUI.initialize();
+
+            // Ensure WorldService is initialized
+            if (worldService == null) {
+                log.error("WorldService is null - attempting to get from context");
+                worldService = GameApplicationContext.getBean(WorldService.class);
+            }
+
+            handlingDisconnect = false;
+            isActuallyMultiplayer = worldService.isMultiplayerMode();
 
         log.debug("GameScreen.show() >> current worldName={}, seed={}",
             worldService.getWorldData().getWorldName(),

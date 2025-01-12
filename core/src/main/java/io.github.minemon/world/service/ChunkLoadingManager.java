@@ -55,6 +55,27 @@ public class ChunkLoadingManager {
     }
 
     public void queueChunkRequest(int x, int y, boolean highPriority) {
+        // Ensure services are initialized
+        if (worldService == null) {
+            log.error("WorldService is null - attempting to get from context");
+            try {
+                worldService = GameApplicationContext.getBean(WorldService.class);
+            } catch (Exception e) {
+                log.error("Failed to get WorldService from context", e);
+                return;
+            }
+        }
+
+        if (multiplayerClient == null) {
+            log.error("MultiplayerClient is null - attempting to get from context");
+            try {
+                multiplayerClient = GameApplicationContext.getBean(MultiplayerClient.class);
+            } catch (Exception e) {
+                log.error("Failed to get MultiplayerClient from context", e);
+                return;
+            }
+        }
+
         Vector2 pos = new Vector2(x, y);
         if (worldService.isMultiplayerMode()) {
             

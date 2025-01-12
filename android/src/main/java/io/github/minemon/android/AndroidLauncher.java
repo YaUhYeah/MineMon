@@ -203,6 +203,9 @@ public class AndroidLauncher extends AndroidApplication {
             // Initialize Android file system
             AndroidInitializer initializer = new AndroidInitializer(this);
             initializer.ensureDirectories();
+            
+            // Copy assets to external storage if needed
+            initializer.copyAssetsIfNeeded();
 
             // Get game instance
             GdxGame game = GameApplicationContext.getBean(GdxGame.class);

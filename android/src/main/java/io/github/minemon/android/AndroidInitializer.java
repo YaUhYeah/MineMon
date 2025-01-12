@@ -115,6 +115,44 @@ public class AndroidInitializer {
         }
     }
 
+    public void copyAssetsIfNeeded() {
+        try {
+            File externalDir = context.getExternalFilesDir(null);
+            if (externalDir == null) {
+                log.error("External storage not available");
+                return;
+            }
+
+            // Create config directory
+            File configDir = new File(externalDir, "config");
+            if (!configDir.exists() && !configDir.mkdirs()) {
+                log.error("Failed to create config directory");
+                return;
+            }
+
+            // Copy biomes.json
+            File biomesFile = new File(configDir, "biomes.json");
+            if (!biomesFile.exists()) {
+                try {
+                    java.io.InputStream in = context.getAssets().open("config/biomes.json");
+                    java.io.OutputStream out = new java.io.FileOutputStream(biomesFile);
+                    byte[] buffer = new byte[1024];
+                    int read;
+                    while ((read = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, read);
+                    }
+                    in.close();
+                    out.close();
+                    log.info("Successfully copied biomes.json to {}", biomesFile.getAbsolutePath());
+                } catch (IOException e) {
+                    log.error("Failed to copy biomes.json", e);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to copy assets", e);
+        }
+    }
+
     public void validateGraphicsContext() {
         try {
             if (Gdx.graphics == null) {
