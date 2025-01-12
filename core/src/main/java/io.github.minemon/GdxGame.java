@@ -4,6 +4,7 @@ import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import io.github.minemon.audio.service.AudioService;
 import io.github.minemon.context.GameApplicationContext;
+import io.github.minemon.context.AndroidGameContext;
 import io.github.minemon.core.screen.ModeSelectionScreen;
 import io.github.minemon.core.service.ScreenManager;
 import io.github.minemon.core.service.SettingsService;
@@ -61,8 +62,18 @@ public class GdxGame extends Game {
                 throw new RuntimeException("LibGDX not properly initialized");
             }
 
-            // Get application context
-            ApplicationContext context = GameApplicationContext.getContext();
+            // Get application context based on platform
+            ApplicationContext context;
+            if (isAndroid) {
+                // On Android, use AndroidGameContext
+                if (!AndroidGameContext.isRegistered(ApplicationContext.class)) {
+                    throw new RuntimeException("Android context not initialized. Make sure AndroidGameContext.initMinimal() is called first.");
+                }
+                context = AndroidGameContext.getBean(ApplicationContext.class);
+            } else {
+                // On desktop, use GameApplicationContext
+                context = GameApplicationContext.getContext();
+            }
             if (context == null) {
                 throw new RuntimeException("Application context is null");
             }
@@ -138,11 +149,10 @@ public class GdxGame extends Game {
             try {
                 if (!touchInputInitialized) {
                     try {
-                        ApplicationContext context = GameApplicationContext.getContext();
-                        touchInput = context.getBean(AndroidTouchInput.class);
+                        touchInput = AndroidGameContext.getBean(AndroidTouchInput.class);
                     } catch (Exception e) {
                         // Fallback to getInstance if bean lookup fails
-                        InputService inputService = GameApplicationContext.getBean(InputService.class);
+                        InputService inputService = AndroidGameContext.getBean(InputService.class);
                         touchInput = AndroidTouchInput.getInstance(inputService);
                     }
                     touchInputInitialized = true;
@@ -169,9 +179,11 @@ public class GdxGame extends Game {
         }
 
         if (!isAndroid) {
-            ApplicationContext context = GameApplicationContext.getContext();
-            context.getBean(UiService.class).dispose();
-            context.getBean(ObjectTextureManager.class).disposeTextures();
+            ApplicationContext context = isAndroid ? AndroidGameContext.getBean(ApplicationContext.class) : GameApplicationContext.getContext();
+            if (context != null) {
+                context.getBean(UiService.class).dispose();
+                context.getBean(ObjectTextureManager.class).disposeTextures();
+            }
         }
         super.dispose();
     }

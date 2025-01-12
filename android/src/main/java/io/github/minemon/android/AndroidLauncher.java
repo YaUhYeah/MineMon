@@ -201,26 +201,26 @@ public class AndroidLauncher extends AndroidApplication {
                 throw new RuntimeException("Failed to load native libraries", e);
             }
 
-            // Initialize LibGDX first
-            AndroidApplicationConfiguration config = createConfig();
-            GdxGame game = new GdxGame();
-            initialize(game, config);
-
-            // Now that LibGDX is initialized, we can initialize the Android context
+            // Initialize Android context first
             try {
                 AndroidGameContext.initMinimal();
-                
-                // Register the game instance if not already registered
-                if (!AndroidGameContext.isRegistered(GdxGame.class)) {
-                    AndroidGameContext.register(GdxGame.class, game);
-                    log.info("Registered GdxGame instance in AndroidGameContext");
-                }
-
                 AndroidGameContext.initServices();
+                log.info("Android context initialized successfully");
             } catch (Exception e) {
                 log.error("Failed to initialize Android game context", e);
                 throw new RuntimeException("Failed to initialize Android game context", e);
             }
+
+            // Initialize LibGDX with the game instance
+            AndroidApplicationConfiguration config = createConfig();
+            GdxGame game = new GdxGame();
+            
+            // Register the game instance in the context
+            AndroidGameContext.register(GdxGame.class, game);
+            log.info("Registered GdxGame instance in AndroidGameContext");
+
+            // Initialize LibGDX
+            initialize(game, config);
 
             // Setup Android input
             InputService inputService = AndroidGameContext.getBean(InputService.class);
