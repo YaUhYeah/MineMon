@@ -80,8 +80,7 @@ public class GameScreen implements Screen {
     @Autowired
     @Lazy
     private ItemTextureManager itemTextureManager;
-    @Autowired
-    private ChunkLoadingManager chunkLoadingManager;
+    private final ChunkLoadingManager chunkLoadingManager;
     private long lastChunkUpdate = 0;
     @Autowired
     @Lazy
@@ -97,7 +96,8 @@ public class GameScreen implements Screen {
                       BiomeService biomeService,
                       WorldRenderer worldRenderer,
                       ChunkLoaderService chunkLoaderService,
-                      ChunkPreloaderService chunkPreloaderService, PlayerAnimationService animationService, MultiplayerClient client) {
+                      ChunkPreloaderService chunkPreloaderService, PlayerAnimationService animationService, MultiplayerClient client,
+                      ChunkLoadingManager chunkLoadingManager) {
         this.playerService = playerService;
         this.worldService = worldService;
         this.audioService = audioService;
@@ -109,6 +109,7 @@ public class GameScreen implements Screen {
         this.worldRenderer = worldRenderer;
         this.chunkLoaderService = chunkLoaderService;
         this.multiplayerClient = client;
+        this.chunkLoadingManager = chunkLoadingManager;
     }
 
     private void handleDisconnection() {
