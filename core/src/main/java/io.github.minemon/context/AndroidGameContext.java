@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.backends.android.AndroidApplication;
 import io.github.minemon.audio.service.AudioService;
 import io.github.minemon.GdxGame;
 import io.github.minemon.core.config.GameConfig;
@@ -63,9 +64,21 @@ public class AndroidGameContext {
             try {
                 log.info("Initializing minimal Android game context");
 
-                // Ensure Gdx.app is available
+                // Wait for Gdx.app to be available (with timeout)
+                int attempts = 0;
+                while (Gdx.app == null && attempts < 10) {
+                    try {
+                        Thread.sleep(100);
+                        attempts++;
+                        log.debug("Waiting for LibGDX initialization, attempt {}/10", attempts);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+
                 if (Gdx.app == null) {
-                    log.error("LibGDX application not initialized");
+                    log.error("LibGDX application not initialized after {} attempts", attempts);
                     throw new IllegalStateException("LibGDX application not initialized");
                 }
 
@@ -134,8 +147,19 @@ public class AndroidGameContext {
             register(settingsService);
 
 
-            GdxGame game = new GdxGame();
-            register(game);
+            // GdxGame is now initialized by AndroidLauncher
+            if (Gdx.app instanceof AndroidApplication) {
+                GdxGame game = ((AndroidApplication) Gdx.app).getApplicationListener();
+                if (game instanceof GdxGame) {
+                    register(game);
+                } else {
+                    log.error("Application listener is not a GdxGame instance");
+                    throw new IllegalStateException("Application listener is not a GdxGame instance");
+                }
+            } else {
+                log.error("Not running in AndroidApplication context");
+                throw new IllegalStateException("Not running in AndroidApplication context");
+            }
 
 
             registrationComplete = true;

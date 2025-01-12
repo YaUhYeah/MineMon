@@ -184,9 +184,6 @@ public class AndroidLauncher extends AndroidApplication {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
 
 
-            AndroidApplicationConfiguration config = createConfig();
-
-
             // Initialize Android file system and copy assets first
             AndroidInitializer initializer = new AndroidInitializer(this);
             initializer.ensureDirectories();
@@ -204,7 +201,12 @@ public class AndroidLauncher extends AndroidApplication {
                 throw new RuntimeException("Failed to load native libraries", e);
             }
 
-            // Initialize Android context
+            // Initialize LibGDX first
+            AndroidApplicationConfiguration config = createConfig();
+            GdxGame game = new GdxGame();
+            initialize(game, config);
+
+            // Now that LibGDX is initialized, we can initialize the Android context
             try {
                 AndroidGameContext.initMinimal();
                 AndroidGameContext.initServices();
@@ -212,9 +214,6 @@ public class AndroidLauncher extends AndroidApplication {
                 log.error("Failed to initialize Android game context", e);
                 throw new RuntimeException("Failed to initialize Android game context", e);
             }
-
-            // Get game instance
-            GdxGame game = AndroidGameContext.getBean(GdxGame.class);
 
             // Setup Android input
             InputService inputService = AndroidGameContext.getBean(InputService.class);
