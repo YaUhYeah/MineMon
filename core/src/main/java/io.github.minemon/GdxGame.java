@@ -8,6 +8,7 @@ import io.github.minemon.core.screen.ModeSelectionScreen;
 import io.github.minemon.core.service.ScreenManager;
 import io.github.minemon.core.service.SettingsService;
 import io.github.minemon.core.service.UiService;
+import io.github.minemon.core.ui.AndroidUIFactory;
 import io.github.minemon.input.AndroidTouchInput;
 import io.github.minemon.input.InputService;
 import io.github.minemon.player.service.PlayerAnimationService;
@@ -25,7 +26,7 @@ public class GdxGame extends Game {
     private final boolean isAndroid;
 
     public GdxGame() {
-        
+
         this.isAndroid = isAndroidPlatform();
     }
 
@@ -42,7 +43,7 @@ public class GdxGame extends Game {
     public void create() {
         try {
             log.info("GdxGame.create() called on platform: {}", isAndroid ? "Android" : "Desktop");
-            
+
             // Wait for graphics context to be ready
             int attempts = 0;
             while (Gdx.gl == null && attempts < 10) {
@@ -54,18 +55,18 @@ public class GdxGame extends Game {
                     break;
                 }
             }
-            
+
             // Verify LibGDX initialization
             if (Gdx.app == null || Gdx.graphics == null) {
                 throw new RuntimeException("LibGDX not properly initialized");
             }
-            
+
             // Get application context
             ApplicationContext context = GameApplicationContext.getContext();
             if (context == null) {
                 throw new RuntimeException("Application context is null");
             }
-            
+
             // Initialize core services in a safe order
             log.info("Initializing core services...");
             try {
@@ -74,14 +75,14 @@ public class GdxGame extends Game {
                 log.error("Failed to initialize SettingsService", e);
                 throw e;
             }
-            
+
             try {
                 context.getBean(UiService.class).initialize();
             } catch (Exception e) {
                 log.error("Failed to initialize UiService", e);
                 throw e;
             }
-            
+
             // Initialize Android-specific UI if needed
             if (isAndroid) {
                 try {
@@ -104,7 +105,7 @@ public class GdxGame extends Game {
             context.getBean(AudioService.class).initAudio();
             context.getBean(BiomeService.class).init();
 
-            
+
             log.info("Showing initial screen...");
             ScreenManager screenManager = context.getBean(ScreenManager.class);
 
@@ -131,7 +132,7 @@ public class GdxGame extends Game {
     @Override
     public void render() {
         super.render();
-        
+
         // Update and render Android touch controls if needed
         if (isAndroid) {
             try {
@@ -146,7 +147,7 @@ public class GdxGame extends Game {
                     }
                     touchInputInitialized = true;
                 }
-                
+
                 if (touchInput != null) {
                     touchInput.update();
                     touchInput.render();
@@ -166,7 +167,7 @@ public class GdxGame extends Game {
             touchInput.dispose();
             touchInput = null;
         }
-        
+
         if (!isAndroid) {
             ApplicationContext context = GameApplicationContext.getContext();
             context.getBean(UiService.class).dispose();

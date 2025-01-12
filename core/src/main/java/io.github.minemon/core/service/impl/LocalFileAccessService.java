@@ -8,37 +8,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class LocalFileAccessService implements FileAccessService {
 
-    @Override
-    public boolean exists(String path) {
-        if (Gdx.files == null) {
-            throw new IllegalStateException("LibGDX not initialized");
-        }
-        return Gdx.files.internal(path).exists();
-    }
-
-    @Override
-    public String readFile(String path) {
-        try {
-            if (Gdx.files == null) {
-                throw new IllegalStateException("LibGDX not initialized");
-            }
-
-            FileHandle fileHandle = Gdx.files.internal(path);
-            if (!fileHandle.exists()) {
-                throw new RuntimeException("File not found: " + path);
-            }
-
-            return fileHandle.readString();
-        } catch (Exception e) {
-            throw new RuntimeException("Error reading file " + path + ": " + e.getMessage(), e);
-        }
-    }
 
     private FileHandle getFileHandle(String path) {
         if (Gdx.files == null) {
             throw new IllegalStateException("LibGDX not initialized");
         }
-        
+
         if (isAndroid()) {
             // On Android, use external files directory
             return Gdx.files.external("Android/data/io.github.minemon/files/" + path);
@@ -52,13 +27,10 @@ public class LocalFileAccessService implements FileAccessService {
         try {
             FileHandle fileHandle = getFileHandle(path);
             // Ensure parent directory exists
-            if (!fileHandle.parent().exists()) {
-                boolean created = fileHandle.parent().mkdirs();
-                if (!created) {
-                    throw new RuntimeException("Failed to create parent directory for: " + path);
-                }
+            if (!fileHandle.parent().exists()) {fileHandle.parent().mkdirs();
+
             }
-            
+
             // Try to write with retries
             Exception lastException = null;
             for (int i = 0; i < 3; i++) {
@@ -95,15 +67,12 @@ public class LocalFileAccessService implements FileAccessService {
         if (Gdx.files == null) {
             throw new IllegalStateException("LibGDX not initialized");
         }
-        
+
         FileHandle dir = getFileHandle(path);
         if (!dir.exists()) {
-            boolean created = dir.mkdirs();
-            if (!created) {
-                throw new RuntimeException("Failed to create directory: " + path);
-            }
+           dir.mkdirs();
         }
-        
+
         // Verify directory is writable
         FileHandle testFile = dir.child(".test");
         try {
@@ -119,7 +88,7 @@ public class LocalFileAccessService implements FileAccessService {
         if (Gdx.files == null) {
             throw new IllegalStateException("LibGDX not initialized");
         }
-        
+
         if (isAndroid()) {
             // On Android, use the external files directory path
             return Gdx.files.external("Android/data/io.github.minemon/files").path();

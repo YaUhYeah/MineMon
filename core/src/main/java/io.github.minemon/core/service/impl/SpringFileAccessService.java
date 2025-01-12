@@ -49,4 +49,14 @@ public class SpringFileAccessService implements FileAccessService {
             throw new RuntimeException("Failed to write file: " + path, e);
         }
     }
+
+    @Override
+    public void ensureDirectoryExists(String path) {
+
+    }
+
+    @Override
+    public String getBasePath() {
+        return "";
+    }
 }

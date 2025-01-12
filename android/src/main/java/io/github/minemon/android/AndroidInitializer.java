@@ -2,9 +2,9 @@ package io.github.minemon.android;
 
 import android.content.Context;
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.files.FileHandle;
 import lombok.extern.slf4j.Slf4j;
 import java.io.File;
+import java.io.IOException;
 
 @Slf4j
 public class AndroidInitializer {
@@ -46,14 +46,14 @@ public class AndroidInitializer {
                         throw new RuntimeException(msg);
                     }
                 }
-                
+
                 // Ensure directory is writable
                 if (!dirFile.canWrite()) {
                     String msg = "Directory not writable: " + dirFile.getAbsolutePath();
                     log.error(msg);
                     throw new RuntimeException(msg);
                 }
-                
+
                 // Test write access with retries
                 boolean writeSuccess = false;
                 IOException lastException = null;
@@ -77,7 +77,7 @@ public class AndroidInitializer {
                         }
                     }
                 }
-                
+
                 if (!writeSuccess) {
                     String msg = "Cannot write to directory after retries: " + dirFile.getAbsolutePath();
                     log.error(msg, lastException);
@@ -88,9 +88,9 @@ public class AndroidInitializer {
             // Set system properties
             System.setProperty("java.io.tmpdir", new File(basePath, "temp").getAbsolutePath());
             System.setProperty("user.home", basePath);
-            
+
             // Don't set user.dir as it's read-only on Android
-            
+
             log.info("All directories created and validated successfully");
 
         } catch (Exception e) {

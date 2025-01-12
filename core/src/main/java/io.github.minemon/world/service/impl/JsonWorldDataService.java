@@ -1,5 +1,7 @@
 package io.github.minemon.world.service.impl;
 
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.Json;
 import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.world.model.ChunkData;
@@ -7,7 +9,6 @@ import io.github.minemon.world.model.WorldData;
 import io.github.minemon.world.service.WorldService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
@@ -37,7 +38,7 @@ public class JsonWorldDataService {
             String defaultDir = System.getProperty("user.home", ".") + "/save/worlds";
             this.baseWorldsDir = baseWorldsDir != null ? baseWorldsDir.trim() : defaultDir;
         }
-        
+
         if (this.baseWorldsDir.isEmpty()) {
             throw new IllegalArgumentException("Base worlds directory cannot be empty");
         }
@@ -126,7 +127,7 @@ public class JsonWorldDataService {
         if (worldName == null || worldName.trim().isEmpty()) {
             throw new IllegalArgumentException("World name cannot be null or empty");
         }
-        
+
         if (isAndroid()) {
             // On Android, use LibGDX's FileHandle
             FileHandle folder = Gdx.files.external(baseWorldsDir + "/" + worldName.trim());
@@ -138,7 +139,7 @@ public class JsonWorldDataService {
             return Paths.get(baseWorldsDir, worldName.trim());
         }
     }
-    
+
     private Path worldFilePath(String worldName) {
         if (isAndroid()) {
             FileHandle file = Gdx.files.external(baseWorldsDir + "/" + worldName.trim() + "/" + worldName + ".json");
@@ -235,9 +236,9 @@ public class JsonWorldDataService {
         }
     }
 
-    
-    
-    
+
+
+
 
     private FileHandle getChunkFile(String worldName, int chunkX, int chunkY) {
         if (isAndroid()) {
@@ -267,7 +268,7 @@ public class JsonWorldDataService {
             if (!chunkFile.parent().exists()) {
                 chunkFile.parent().mkdirs();
             }
-            
+
             String jsonStr = json.toJson(chunkData);
             chunkFile.writeString(jsonStr, false);
         }

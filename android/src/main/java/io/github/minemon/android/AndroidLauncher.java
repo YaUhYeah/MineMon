@@ -15,9 +15,9 @@ import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration;
 import com.badlogic.gdx.backends.android.AndroidGraphics;
 import io.github.minemon.GdxGame;
 import io.github.minemon.context.GameApplicationContext;
+import io.github.minemon.core.ui.AndroidUIFactory;
 import io.github.minemon.input.AndroidTouchInput;
 import io.github.minemon.input.InputService;
-import io.github.minemon.ui.AndroidUIFactory;
 import lombok.extern.slf4j.Slf4j;
 import java.io.File;
 import java.io.IOException;
@@ -28,7 +28,7 @@ public class AndroidLauncher extends AndroidApplication {
     private boolean isInitialized = false;
     private AndroidInitializer initializer;
     private static final int PERMISSION_REQUEST_CODE = 123;
-    
+
     private boolean hasStoragePermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             return Environment.isExternalStorageManager();
@@ -37,7 +37,7 @@ public class AndroidLauncher extends AndroidApplication {
                 Manifest.permission.READ_EXTERNAL_STORAGE,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE
             };
-            
+
             for (String permission : permissions) {
                 if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
                     return false;
@@ -66,7 +66,7 @@ public class AndroidLauncher extends AndroidApplication {
                 Manifest.permission.READ_EXTERNAL_STORAGE,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE
             };
-            
+
             boolean needsPermission = false;
             for (String permission : permissions) {
                 if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
@@ -74,7 +74,7 @@ public class AndroidLauncher extends AndroidApplication {
                     break;
                 }
             }
-            
+
             if (needsPermission) {
                 ActivityCompat.requestPermissions(this, permissions, PERMISSION_REQUEST_CODE);
             }
@@ -103,24 +103,24 @@ public class AndroidLauncher extends AndroidApplication {
             while (rootCause.getCause() != null) {
                 rootCause = rootCause.getCause();
             }
-            
+
             // Log only the essential information
-            log.error("[{}] {}: {}", 
+            log.error("[{}] {}: {}",
                 thread.getName(),
                 rootCause.getClass().getSimpleName(),
                 rootCause.getMessage());
-            
+
             finish();
         });
-        
+
         super.onCreate(savedInstanceState);
 
         try {
             log.info("Starting AndroidLauncher onCreate");
-            
+
             // Request permissions first and wait for them to be granted
             requestPermissions();
-            
+
             // Wait for permissions to be granted (with timeout)
             int attempts = 0;
             while (!hasStoragePermissions() && attempts < 10) {
@@ -133,13 +133,13 @@ public class AndroidLauncher extends AndroidApplication {
                     break;
                 }
             }
-            
+
             if (!hasStoragePermissions()) {
                 String msg = "Storage permissions not granted after timeout";
                 log.error(msg);
                 throw new RuntimeException(msg);
             }
-            
+
             // Ensure external storage is available and writable
             File externalDir = getExternalFilesDir(null);
             if (externalDir == null) {
@@ -147,7 +147,7 @@ public class AndroidLauncher extends AndroidApplication {
                 log.error(msg);
                 throw new RuntimeException(msg);
             }
-            
+
             // Test write access with retries
             boolean writeSuccess = false;
             IOException lastException = null;
@@ -171,26 +171,26 @@ public class AndroidLauncher extends AndroidApplication {
                     }
                 }
             }
-            
+
             if (!writeSuccess) {
                 String msg = "Cannot write to external storage after retries";
                 log.error(msg, lastException);
                 throw new RuntimeException(msg, lastException);
             }
-            
+
             requestWindowFeature(Window.FEATURE_NO_TITLE);
             getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
 
-            
+
             AndroidApplicationConfiguration config = createConfig();
 
-            
+
             // Initialize Android-specific context with Android profile
             System.setProperty("spring.profiles.active", "android");
             GameApplicationContext.initContext(true);
-            
+
             // Load native libraries first
             try {
                 System.loadLibrary("gdx");
@@ -203,14 +203,14 @@ public class AndroidLauncher extends AndroidApplication {
             // Initialize Android file system
             AndroidInitializer initializer = new AndroidInitializer(this);
             initializer.ensureDirectories();
-            
+
             // Get game instance
             GdxGame game = GameApplicationContext.getBean(GdxGame.class);
-            
+
             // Setup Android input
             InputService inputService = GameApplicationContext.getBean(InputService.class);
             inputService.setAndroidMode(true);
-            
+
             // Initialize Android touch input
             try {
                 AndroidTouchInput touchInput = GameApplicationContext.getBean(AndroidTouchInput.class);
@@ -219,13 +219,13 @@ public class AndroidLauncher extends AndroidApplication {
                 log.warn("Failed to initialize touch input early", e);
                 // Not critical, will try again in GdxGame
             }
-            
+
             // Set system properties for file paths
             System.setProperty("user.home", externalDir.getAbsolutePath());
-            
+
             // Initialize game
             initialize(game, config);
-            
+
             // Graphics context will be initialized in the create() method
             log.info("AndroidLauncher initialized successfully");
 
@@ -267,7 +267,6 @@ public class AndroidLauncher extends AndroidApplication {
         config.disableAudio = false;
         config.maxSimultaneousSounds = 16;
         config.useAccelerometer = false;
-        config.hideStatusBar = true;
         return config;
     }
 
