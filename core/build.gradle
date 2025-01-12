@@ -25,13 +25,22 @@ dependencies {
   implementation 'com.h2database:h2:2.2.224'
 
   // Spring Core - Keep as implementation to not leak to Android
-  implementation "org.springframework:spring-core:$springVersion"
-  implementation "org.springframework:spring-context:$springVersion"
-  implementation "org.springframework:spring-beans:$springVersion"
-  implementation "org.springframework.boot:spring-boot-autoconfigure:$springVersion"
+  implementation("org.springframework:spring-core:$springVersion") {
+    exclude group: 'org.springframework', module: 'spring-jcl'
+  }
+  implementation("org.springframework:spring-context:$springVersion") {
+    exclude group: 'org.springframework', module: 'spring-jcl'
+  }
+  implementation("org.springframework:spring-beans:$springVersion") {
+    exclude group: 'org.springframework', module: 'spring-jcl'
+  }
+  implementation("org.springframework.boot:spring-boot-autoconfigure:$springVersion") {
+    exclude group: 'org.springframework', module: 'spring-jcl'
+  }
 
   // Logging - Make API so Android can use it
   api "org.slf4j:slf4j-api:2.0.9"
+  api "org.slf4j:jcl-over-slf4j:2.0.9"  // Bridge for Spring logging
   implementation "ch.qos.logback:logback-classic:1.4.11"
 
   // JPA - Implementation since it's only used in core

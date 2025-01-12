@@ -32,6 +32,24 @@ public class InputService extends InputAdapter {
     private boolean runPressed;
     private PlayerDirection lastPressedDirection = null;
     private boolean isActive = false;
+    private boolean isAndroid = false;
+
+    public void setAndroidMode(boolean android) {
+        this.isAndroid = android;
+    }
+
+    public void simulateKeyPress(PlayerDirection direction) {
+        if (!isActive || !isAndroid) return;
+        
+        resetKeys();
+        switch (direction) {
+            case UP -> upPressed = true;
+            case DOWN -> downPressed = true;
+            case LEFT -> leftPressed = true;
+            case RIGHT -> rightPressed = true;
+        }
+        lastPressedDirection = direction;
+    }
     @Autowired @Lazy private ItemPickupHandler itemPickupHandler;
 
     @Autowired @Lazy private ChatService chatService;

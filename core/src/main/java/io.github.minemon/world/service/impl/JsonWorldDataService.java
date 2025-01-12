@@ -31,7 +31,8 @@ public class JsonWorldDataService {
 
     public JsonWorldDataService(String baseWorldsDir, boolean isServer) {
         
-        this.baseWorldsDir = baseWorldsDir != null ? baseWorldsDir.trim() : "save/worlds";
+        String defaultDir = System.getProperty("user.home", ".") + "/save/worlds";
+        this.baseWorldsDir = baseWorldsDir != null ? baseWorldsDir.trim() : defaultDir;
         if (this.baseWorldsDir.isEmpty()) {
             throw new IllegalArgumentException("Base worlds directory cannot be empty");
         }
@@ -43,7 +44,7 @@ public class JsonWorldDataService {
         try {
             Files.createDirectories(Paths.get(this.baseWorldsDir));
         } catch (IOException e) {
-            log.error("Failed to create base worlds directory: {}", e.getMessage());
+            log.error("Failed to create base worlds directory {}: {}", this.baseWorldsDir, e.getMessage());
         }
     }
 

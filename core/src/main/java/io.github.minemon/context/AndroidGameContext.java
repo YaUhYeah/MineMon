@@ -61,19 +61,47 @@ public class AndroidGameContext {
         if (!minimalInitialized) {
             try {
                 log.info("Initializing minimal Android game context");
+                
+                // Ensure Gdx.app is available
+                if (Gdx.app == null) {
+                    log.error("LibGDX application not initialized");
+                    throw new IllegalStateException("LibGDX application not initialized");
+                }
+                
+                // Register core beans in a safe order
                 registerCoreBeans();
+                
+                // Verify critical beans
+                verifyCoreBeans();
+                
                 minimalInitialized = true;
                 log.info("Minimal context initialized successfully");
             } catch (Exception e) {
                 log.error("Failed to initialize minimal context", e);
                 cleanup();
-                throw new RuntimeException("Context initialization failed", e);
+                throw new RuntimeException("Context initialization failed: " + e.getMessage(), e);
             }
+        }
+    }
+    
+    private static void verifyCoreBeans() {
+        log.info("Verifying core beans...");
+        try {
+            // Verify essential beans
+            getBean(GameConfig.class);
+            getBean(InputConfiguration.class);
+            getBean(FileAccessService.class);
+            getBean(ApplicationEventPublisher.class);
+            
+            log.info("Core beans verified successfully");
+        } catch (Exception e) {
+            log.error("Core bean verification failed", e);
+            throw e;
         }
     }
     private static void registerCoreBeans() {
         try {
-            
+            // Core configuration
             GameConfig gameConfig = new GameConfig();
             register(gameConfig);
 
@@ -83,10 +111,17 @@ public class AndroidGameContext {
             PlayerProperties playerProperties = new PlayerProperties();
             register(playerProperties);
 
+            // Input handling
             InputConfiguration inputConfig = new InputConfiguration();
             register(inputConfig);
-
             
+            InputService inputService = new InputService(inputConfig);
+            register(inputService);
+            
+            AndroidTouchInput touchInput = new AndroidTouchInput(inputService);
+            register(AndroidTouchInput.class, touchInput);
+            
+            // Event handling
             ApplicationEventPublisher eventPublisher = new AndroidEventPublisher();
             register(ApplicationEventPublisher.class, eventPublisher);
 
@@ -241,7 +276,8 @@ public class AndroidGameContext {
             register(inventoryService);
 
             
-            JsonWorldDataService jsonWorldDataService = new JsonWorldDataService("save/worlds", false);
+            String worldsDir = System.getProperty("user.home", ".") + "/save/worlds";
+            JsonWorldDataService jsonWorldDataService = new JsonWorldDataService(worldsDir, false);
             register(jsonWorldDataService);
 
             WorldGeneratorImpl worldGenerator = new WorldGeneratorImpl(getBean(WorldConfig.class));
@@ -615,7 +651,8 @@ public class AndroidGameContext {
         register(inventoryService);
 
         
-        JsonWorldDataService jsonWorldDataService = new JsonWorldDataService("save/worlds", false);
+        String worldsDir = System.getProperty("user.home", ".") + "/save/worlds";
+        JsonWorldDataService jsonWorldDataService = new JsonWorldDataService(worldsDir, false);
         register(jsonWorldDataService);
 
         WorldGeneratorImpl worldGenerator = new WorldGeneratorImpl(worldConfig);

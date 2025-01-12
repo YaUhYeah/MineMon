@@ -20,6 +20,10 @@ android {
   namespace "io.github.minemon"
   compileSdk 34
 
+  buildFeatures {
+    buildConfig = true
+  }
+
   defaultConfig {
     applicationId "io.github.minemon"
     minSdk 26
@@ -85,12 +89,17 @@ dependencies {
   implementation 'androidx.multidex:multidex:2.0.1'
 
   // Spring (minimal set)
-  implementation "org.springframework:spring-core:$springVersion"
-  implementation "org.springframework:spring-context:$springVersion"
+  implementation("org.springframework:spring-core:$springVersion") {
+    exclude group: 'org.springframework', module: 'spring-jcl'
+  }
+  implementation("org.springframework:spring-context:$springVersion") {
+    exclude group: 'org.springframework', module: 'spring-jcl'
+  }
 
   // Logging
   implementation 'com.github.tony19:logback-android:3.0.0'
   implementation 'org.slf4j:slf4j-api:2.0.9'
+  implementation 'org.slf4j:jcl-over-slf4j:2.0.9'  // Bridge for Spring logging
 
   // Lombok
   compileOnly "org.projectlombok:lombok:1.18.30"
