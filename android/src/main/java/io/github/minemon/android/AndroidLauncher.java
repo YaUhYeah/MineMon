@@ -15,7 +15,12 @@ import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration;
 import com.badlogic.gdx.backends.android.AndroidGraphics;
 import io.github.minemon.GdxGame;
 import io.github.minemon.context.GameApplicationContext;
+import io.github.minemon.input.AndroidTouchInput;
+import io.github.minemon.input.InputService;
+import io.github.minemon.ui.AndroidUIFactory;
 import lombok.extern.slf4j.Slf4j;
+import java.io.File;
+import java.io.IOException;
 
 @Slf4j
 public class AndroidLauncher extends AndroidApplication {
@@ -24,6 +29,24 @@ public class AndroidLauncher extends AndroidApplication {
     private AndroidInitializer initializer;
     private static final int PERMISSION_REQUEST_CODE = 123;
     
+    private boolean hasStoragePermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.isExternalStorageManager();
+        } else {
+            String[] permissions = {
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            };
+            
+            for (String permission : permissions) {
+                if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
     private void requestPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Android 11 (API 30) and above
@@ -80,12 +103,64 @@ public class AndroidLauncher extends AndroidApplication {
         try {
             log.info("Starting AndroidLauncher onCreate");
             
-            // Request permissions first
+            // Request permissions first and wait for them to be granted
             requestPermissions();
             
-            // Ensure external storage is available
-            if (getExternalFilesDir(null) == null) {
-                throw new RuntimeException("External storage not available");
+            // Wait for permissions to be granted (with timeout)
+            int attempts = 0;
+            while (!hasStoragePermissions() && attempts < 10) {
+                try {
+                    Thread.sleep(1000);
+                    attempts++;
+                    log.info("Waiting for storage permissions, attempt {}/10", attempts);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            
+            if (!hasStoragePermissions()) {
+                String msg = "Storage permissions not granted after timeout";
+                log.error(msg);
+                throw new RuntimeException(msg);
+            }
+            
+            // Ensure external storage is available and writable
+            File externalDir = getExternalFilesDir(null);
+            if (externalDir == null) {
+                String msg = "External storage not available";
+                log.error(msg);
+                throw new RuntimeException(msg);
+            }
+            
+            // Test write access with retries
+            boolean writeSuccess = false;
+            IOException lastException = null;
+            for (int i = 0; i < 3; i++) {
+                File testFile = new File(externalDir, "test.tmp");
+                try {
+                    if (testFile.createNewFile()) {
+                        testFile.delete();
+                        writeSuccess = true;
+                        log.info("External storage is writable");
+                        break;
+                    }
+                } catch (IOException e) {
+                    lastException = e;
+                    log.warn("Write test attempt {} failed: {}", i + 1, e.getMessage());
+                    try {
+                        Thread.sleep(100); // Short delay before retry
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+            
+            if (!writeSuccess) {
+                String msg = "Cannot write to external storage after retries";
+                log.error(msg, lastException);
+                throw new RuntimeException(msg, lastException);
             }
             
             requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -94,19 +169,7 @@ public class AndroidLauncher extends AndroidApplication {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
 
             
-            AndroidApplicationConfiguration config = new AndroidApplicationConfiguration();
-            config.useImmersiveMode = true;
-            config.useWakelock = true;
-            config.useGyroscope = false;
-            config.useCompass = false;
-            config.useAccelerometer = false;
-            config.numSamples = 0;  
-            config.r = 8;
-            config.g = 8;
-            config.b = 8;
-            config.a = 8;
-            config.depth = 16;
-            config.useWakelock = true;
+            AndroidApplicationConfiguration config = createConfig();
 
             
             // Initialize Android-specific context
@@ -132,15 +195,17 @@ public class AndroidLauncher extends AndroidApplication {
                 // Not critical, will try again in GdxGame
             }
             
-            // Initialize game with proper Android paths
-            File externalDir = getExternalFilesDir(null);
-            if (externalDir == null) {
-                throw new RuntimeException("External storage not available");
+            // Load native libraries before initializing game
+            try {
+                System.loadLibrary("gdx");
+                System.loadLibrary("gdx-freetype");
+            } catch (UnsatisfiedLinkError e) {
+                log.error("Failed to load native libraries", e);
+                throw new RuntimeException("Failed to load native libraries", e);
             }
             
             // Set system properties for file paths
             System.setProperty("user.home", externalDir.getAbsolutePath());
-            System.setProperty("user.dir", externalDir.getAbsolutePath());
             
             // Initialize game
             initialize(game, config);
