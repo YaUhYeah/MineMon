@@ -61,22 +61,17 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     private String saveDir;
     
     private String getActualSaveDir() {
-        String basePath = fileAccessService.getBasePath();
-        String worldsPath = basePath + "/save/worlds/";
-        
         try {
+            // First ensure the base directories exist
             fileAccessService.ensureDirectoryExists("save");
             fileAccessService.ensureDirectoryExists("save/worlds");
             
-            // Test write access
-            String testPath = "save/worlds/.test";
-            fileAccessService.writeFile(testPath, "test");
-            if (!fileAccessService.exists(testPath)) {
-                throw new RuntimeException("Failed to write test file");
-            }
+            // Get the full path for logging
+            String worldsPath = fileAccessService.getBasePath() + "/save/worlds";
+            log.info("Using worlds directory: {}", worldsPath);
             
-            log.info("Worlds directory is writable: {}", worldsPath);
-            return worldsPath;
+            // Return the relative path since FileAccessService handles the base path
+            return "save/worlds/";
         } catch (Exception e) {
             String msg = "Failed to initialize worlds directory: " + e.getMessage();
             log.error(msg, e);
