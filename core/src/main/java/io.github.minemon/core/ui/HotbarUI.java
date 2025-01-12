@@ -60,6 +60,7 @@ public class HotbarUI {
         this.textureManager = textureManager;
         this.slots = new Table[HOTBAR_SIZE];
         initializeDefaultKeybindings();
+        initialize(); // Initialize immediately
     }
 
     public void initialize() {

@@ -2,14 +2,23 @@
 <configuration>
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>[%thread] %msg%n</pattern>
         </encoder>
     </appender>
 
+    <!-- Set default logging level to INFO -->
     <root level="INFO">
         <appender-ref ref="CONSOLE" />
     </root>
+
+    <!-- Specific package configurations -->
+    <logger name="io.github.minemon" level="INFO" />
+    <logger name="com.badlogic.gdx" level="WARN" />
+    <logger name="org.springframework" level="WARN" />
     
-    <logger name="io.github.minemon" level="DEBUG" />
-    <logger name="org.springframework" level="INFO" />
+    <!-- Suppress specific noisy loggers -->
+    <logger name="io.github.minemon.world.service.impl.TileManager" level="WARN" />
+    <logger name="io.github.minemon.world.biome.config.BiomeConfigurationLoader" level="WARN" />
+    <logger name="io.github.minemon.world.service.impl.WorldObjectManager" level="WARN" />
+    <logger name="io.github.minemon.core.service.impl.ObjectTextureManager" level="WARN" />
 </configuration>
