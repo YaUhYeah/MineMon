@@ -74,21 +74,53 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
                 }
             }
             
-            // Test write access
-            File testFile = new File(worldsDir, ".test");
-            try {
-                if (testFile.createNewFile()) {
-                    testFile.delete();
-                    log.info("Worlds directory is writable: {}", worldsDir.getAbsolutePath());
-                } else {
-                    throw new RuntimeException("Cannot write to worlds directory: " + worldsDir.getAbsolutePath());
+            // Test write access with retries
+            boolean writeSuccess = false;
+            IOException lastException = null;
+            for (int i = 0; i < 3; i++) {
+                File testFile = new File(worldsDir, ".test");
+                try {
+                    if (testFile.createNewFile()) {
+                        testFile.delete();
+                        writeSuccess = true;
+                        log.info("Worlds directory is writable: {}", worldsDir.getAbsolutePath());
+                        break;
+                    }
+                } catch (IOException e) {
+                    lastException = e;
+                    log.warn("Write test attempt {} failed for worlds directory: {}", i + 1, e.getMessage());
+                    try {
+                        Thread.sleep(100); // Short delay before retry
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
                 }
-            } catch (IOException e) {
-                log.error("Cannot write to worlds directory: {}", worldsDir.getAbsolutePath(), e);
-                throw new RuntimeException("Cannot write to worlds directory: " + worldsDir.getAbsolutePath(), e);
             }
             
-            return worldsDir.getAbsolutePath() + "/";
+            if (!writeSuccess) {
+                String msg = "Cannot write to worlds directory after retries: " + worldsDir.getAbsolutePath();
+                log.error(msg, lastException);
+                throw new RuntimeException(msg, lastException);
+            }
+            
+            // Create a test world file to verify write access
+            File testWorldFile = new File(worldsDir, ".test_world");
+            try {
+                if (!testWorldFile.createNewFile()) {
+                    String msg = "Cannot create test world file: " + testWorldFile.getAbsolutePath();
+                    log.error(msg);
+                    throw new RuntimeException(msg);
+                }
+                testWorldFile.delete();
+                log.info("World file creation test successful");
+            } catch (IOException e) {
+                String msg = "Cannot create test world file: " + testWorldFile.getAbsolutePath();
+                log.error(msg, e);
+                throw new RuntimeException(msg, e);
+            }
+            
+            return worldsDir.getAbsolutePath();
         }
         
         return basePath + "/" + saveDir;

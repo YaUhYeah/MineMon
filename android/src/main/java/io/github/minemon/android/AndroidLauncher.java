@@ -195,15 +195,17 @@ public class AndroidLauncher extends AndroidApplication {
                 // Not critical, will try again in GdxGame
             }
             
-            // Initialize game with proper Android paths
-            File externalDir = getExternalFilesDir(null);
-            if (externalDir == null) {
-                throw new RuntimeException("External storage not available");
+            // Load native libraries before initializing game
+            try {
+                System.loadLibrary("gdx");
+                System.loadLibrary("gdx-freetype");
+            } catch (UnsatisfiedLinkError e) {
+                log.error("Failed to load native libraries", e);
+                throw new RuntimeException("Failed to load native libraries", e);
             }
             
             // Set system properties for file paths
             System.setProperty("user.home", externalDir.getAbsolutePath());
-            System.setProperty("user.dir", externalDir.getAbsolutePath());
             
             // Initialize game
             initialize(game, config);
