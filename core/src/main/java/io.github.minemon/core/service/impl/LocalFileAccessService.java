@@ -34,17 +34,29 @@ public class LocalFileAccessService implements FileAccessService {
         }
     }
 
+    private FileHandle getFileHandle(String path) {
+        if (Gdx.files == null) {
+            throw new IllegalStateException("LibGDX not initialized");
+        }
+        
+        if (isAndroid()) {
+            // On Android, use external files directory
+            return Gdx.files.external("Android/data/io.github.minemon/files/" + path);
+        } else {
+            return Gdx.files.local(path);
+        }
+    }
+
     @Override
     public void writeFile(String path, String content) {
         try {
-            if (Gdx.files == null) {
-                throw new IllegalStateException("LibGDX not initialized");
-            }
-
-            FileHandle fileHandle = Gdx.files.local(path);
+            FileHandle fileHandle = getFileHandle(path);
             // Ensure parent directory exists
             if (!fileHandle.parent().exists()) {
-                fileHandle.parent().mkdirs();
+                boolean created = fileHandle.parent().mkdirs();
+                if (!created) {
+                    throw new RuntimeException("Failed to create parent directory for: " + path);
+                }
             }
             
             // Try to write with retries
@@ -84,7 +96,7 @@ public class LocalFileAccessService implements FileAccessService {
             throw new IllegalStateException("LibGDX not initialized");
         }
         
-        FileHandle dir = Gdx.files.local(path);
+        FileHandle dir = getFileHandle(path);
         if (!dir.exists()) {
             boolean created = dir.mkdirs();
             if (!created) {
@@ -98,7 +110,7 @@ public class LocalFileAccessService implements FileAccessService {
             testFile.writeString("test", false);
             testFile.delete();
         } catch (Exception e) {
-            throw new RuntimeException("Directory exists but is not writable: " + path, e);
+            throw new RuntimeException("Directory exists but is not writable: " + path + " (" + e.getMessage() + ")", e);
         }
     }
 
@@ -109,11 +121,37 @@ public class LocalFileAccessService implements FileAccessService {
         }
         
         if (isAndroid()) {
-            // On Android, use the external files directory
-            return Gdx.files.getLocalStoragePath();
+            // On Android, use the external files directory path
+            return Gdx.files.external("Android/data/io.github.minemon/files").path();
         } else {
             // On desktop, use the working directory
             return Gdx.files.local("").file().getAbsolutePath();
+        }
+    }
+
+    @Override
+    public boolean exists(String path) {
+        if (Gdx.files == null) {
+            throw new IllegalStateException("LibGDX not initialized");
+        }
+        return getFileHandle(path).exists();
+    }
+
+    @Override
+    public String readFile(String path) {
+        try {
+            if (Gdx.files == null) {
+                throw new IllegalStateException("LibGDX not initialized");
+            }
+
+            FileHandle fileHandle = getFileHandle(path);
+            if (!fileHandle.exists()) {
+                throw new RuntimeException("File not found: " + path);
+            }
+
+            return fileHandle.readString();
+        } catch (Exception e) {
+            throw new RuntimeException("Error reading file " + path + ": " + e.getMessage(), e);
         }
     }
 }
