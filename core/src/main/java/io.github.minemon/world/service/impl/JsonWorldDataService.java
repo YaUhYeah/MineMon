@@ -57,8 +57,16 @@ public class JsonWorldDataService {
 
 
 
-    private Path playerDataFolderPath(String worldName) {
-        return worldFolderPath(worldName).resolve("playerdata");
+    private FileHandle getPlayerDataFolder(String worldName) {
+        if (isAndroid()) {
+            return Gdx.files.external(baseWorldsDir + "/" + worldName + "/playerdata");
+        } else {
+            return Gdx.files.absolute(playerDataFolderPath(worldName).toString());
+        }
+    }
+
+    private FileHandle getPlayerDataFile(String worldName, String username) {
+        return getPlayerDataFolder(worldName).child(username + ".json");
     }
 
     public void savePlayerData(String worldName, PlayerData playerData) throws IOException {
@@ -67,12 +75,19 @@ public class JsonWorldDataService {
             return;
         }
 
-        Path folder = playerDataFolderPath(worldName);
-        Files.createDirectories(folder);
+        FileHandle folder = getPlayerDataFolder(worldName);
+        if (!folder.exists()) {
+            folder.mkdirs();
+        }
 
-        Path file = folder.resolve(playerData.getUsername() + ".json");
-        try (Writer w = Files.newBufferedWriter(file)) {
-            json.toJson(playerData, w);
+        FileHandle file = getPlayerDataFile(worldName, playerData.getUsername());
+        try {
+            String jsonStr = json.toJson(playerData);
+            file.writeString(jsonStr, false);
+            log.info("Successfully saved player data for '{}' in world '{}'", playerData.getUsername(), worldName);
+        } catch (Exception e) {
+            log.error("Error saving player data for '{}' in world '{}': {}", playerData.getUsername(), worldName, e.getMessage());
+            throw new IOException("Failed to save player data", e);
         }
     }
 
@@ -82,23 +97,30 @@ public class JsonWorldDataService {
             return null;
         }
 
-        Path folder = playerDataFolderPath(worldName);
-        if (!Files.exists(folder)) {
-            Files.createDirectories(folder);
+        FileHandle folder = getPlayerDataFolder(worldName);
+        if (!folder.exists()) {
+            folder.mkdirs();
             return null;
         }
 
-        Path file = folder.resolve(username + ".json");
-        if (!Files.exists(file)) {
+        FileHandle file = getPlayerDataFile(worldName, username);
+        if (!file.exists()) {
             return null;
         }
 
-        try (Reader r = Files.newBufferedReader(file)) {
-            return json.fromJson(PlayerData.class, r);
+        try {
+            String jsonStr = file.readString();
+            PlayerData data = json.fromJson(PlayerData.class, jsonStr);
+            log.info("Successfully loaded player data for '{}' in world '{}'", username, worldName);
+            return data;
         } catch (Exception e) {
-            log.error("Error loading player data for {}: {}", username, e.getMessage());
+            log.error("Error loading player data for '{}' in world '{}': {}", username, worldName, e.getMessage());
             return null;
         }
+    }
+
+    private Path playerDataFolderPath(String worldName) {
+        return worldFolderPath(worldName).resolve("playerdata");
     }
     private Path worldFolderPath(String worldName) {
         if (worldName == null || worldName.trim().isEmpty()) {
@@ -260,55 +282,66 @@ public class JsonWorldDataService {
 
     public List<String> listAllWorlds() {
         List<String> result = new ArrayList<>();
-        Path root = Paths.get(baseWorldsDir);  
-        if (!Files.exists(root)) {
+        FileHandle root;
+        if (isAndroid()) {
+            root = Gdx.files.external(baseWorldsDir);
+        } else {
+            root = Gdx.files.absolute(baseWorldsDir);
+        }
+
+        if (!root.exists()) {
+            log.info("Worlds directory does not exist: {}", root.path());
             return result;
         }
+
         try {
-            Files.list(root)
-                .filter(Files::isDirectory)
-                .forEach(path -> {
-                    
-                    String folderName = path.getFileName().toString();
-                    Path worldJson = path.resolve(folderName + ".json");
-                    if (Files.exists(worldJson)) {
+            for (FileHandle dir : root.list()) {
+                if (dir.isDirectory()) {
+                    String folderName = dir.name();
+                    FileHandle worldJson = dir.child(folderName + ".json");
+                    if (worldJson.exists()) {
                         result.add(folderName);
+                        log.debug("Found world: {}", folderName);
                     }
-                });
-        } catch (IOException e) {
-            log.warn("Could not list worlds: {}", e.getMessage());
+                }
+            }
+            log.info("Found {} worlds in {}", result.size(), root.path());
+        } catch (Exception e) {
+            log.warn("Could not list worlds in {}: {}", root.path(), e.getMessage());
         }
         return result;
     }
 
-    
     public void deleteWorld(String worldName) {
-        Path folder = worldFolderPath(worldName);
-        if (!Files.exists(folder)) {
+        FileHandle folder;
+        if (isAndroid()) {
+            folder = Gdx.files.external(baseWorldsDir + "/" + worldName);
+        } else {
+            folder = Gdx.files.absolute(worldFolderPath(worldName).toString());
+        }
+
+        if (!folder.exists()) {
+            log.debug("World '{}' does not exist at {}", worldName, folder.path());
             return;
         }
+
         try {
-            Files.walk(folder)
-                .sorted((p1, p2) -> p2.getNameCount() - p1.getNameCount()) 
-                .forEach(f -> {
-                    try {
-                        Files.delete(f);
-                    } catch (IOException e) {
-                        log.warn("Failed deleting {}", f);
-                    }
-                });
-        } catch (IOException e) {
-            log.warn("Failed to fully delete world '{}': {}", worldName, e.getMessage());
+            folder.deleteDirectory();
+            log.info("Successfully deleted world '{}' at {}", worldName, folder.path());
+        } catch (Exception e) {
+            log.warn("Failed to delete world '{}' at {}: {}", worldName, folder.path(), e.getMessage());
         }
     }
 
-    
     public void deleteChunk(String worldName, int chunkX, int chunkY) {
-        try {
-            Path p = chunkFilePath(worldName, chunkX, chunkY);
-            Files.deleteIfExists(p);
-        } catch (IOException e) {
-            log.warn("Failed to delete chunk {}/({},{})", worldName, chunkX, chunkY);
+        FileHandle chunkFile = getChunkFile(worldName, chunkX, chunkY);
+        if (chunkFile.exists()) {
+            try {
+                chunkFile.delete();
+                log.debug("Deleted chunk {},{} in world '{}'", chunkX, chunkY, worldName);
+            } catch (Exception e) {
+                log.warn("Failed to delete chunk {},{} in world '{}': {}", chunkX, chunkY, worldName, e.getMessage());
+            }
         }
     }
 }
