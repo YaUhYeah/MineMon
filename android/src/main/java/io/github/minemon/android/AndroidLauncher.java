@@ -175,6 +175,15 @@ public class AndroidLauncher extends AndroidApplication {
             // Initialize Android-specific context
             GameApplicationContext.initContext(true);
             
+            // Load native libraries first
+            try {
+                System.loadLibrary("gdx");
+                System.loadLibrary("gdx-freetype");
+            } catch (UnsatisfiedLinkError e) {
+                log.error("Failed to load native libraries", e);
+                throw new RuntimeException("Failed to load native libraries", e);
+            }
+
             // Initialize Android file system
             AndroidInitializer initializer = new AndroidInitializer(this);
             initializer.ensureDirectories();
@@ -193,15 +202,6 @@ public class AndroidLauncher extends AndroidApplication {
             } catch (Exception e) {
                 log.warn("Failed to initialize touch input early", e);
                 // Not critical, will try again in GdxGame
-            }
-            
-            // Load native libraries before initializing game
-            try {
-                System.loadLibrary("gdx");
-                System.loadLibrary("gdx-freetype");
-            } catch (UnsatisfiedLinkError e) {
-                log.error("Failed to load native libraries", e);
-                throw new RuntimeException("Failed to load native libraries", e);
             }
             
             // Set system properties for file paths
