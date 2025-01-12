@@ -30,21 +30,28 @@ public class JsonWorldDataService {
     private WorldService worldService;
 
     public JsonWorldDataService(String baseWorldsDir, boolean isServer) {
+        // For Android, use the external files directory
+        if (isAndroid()) {
+            this.baseWorldsDir = "Android/data/io.github.minemon/files/save/worlds";
+        } else {
+            String defaultDir = System.getProperty("user.home", ".") + "/save/worlds";
+            this.baseWorldsDir = baseWorldsDir != null ? baseWorldsDir.trim() : defaultDir;
+        }
         
-        String defaultDir = System.getProperty("user.home", ".") + "/save/worlds";
-        this.baseWorldsDir = baseWorldsDir != null ? baseWorldsDir.trim() : defaultDir;
         if (this.baseWorldsDir.isEmpty()) {
             throw new IllegalArgumentException("Base worlds directory cannot be empty");
         }
         this.isServer = isServer;
         this.json = new Json();
         this.json.setIgnoreUnknownFields(true);
+    }
 
-        
+    private boolean isAndroid() {
         try {
-            Files.createDirectories(Paths.get(this.baseWorldsDir));
-        } catch (IOException e) {
-            log.error("Failed to create base worlds directory {}: {}", this.baseWorldsDir, e.getMessage());
+            Class.forName("android.os.Build");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
         }
     }
 
@@ -97,18 +104,39 @@ public class JsonWorldDataService {
         if (worldName == null || worldName.trim().isEmpty()) {
             throw new IllegalArgumentException("World name cannot be null or empty");
         }
-        return Paths.get(baseWorldsDir, worldName.trim());
+        
+        if (isAndroid()) {
+            // On Android, use LibGDX's FileHandle
+            FileHandle folder = Gdx.files.external(baseWorldsDir + "/" + worldName.trim());
+            if (!folder.exists()) {
+                folder.mkdirs();
+            }
+            return Paths.get(folder.path());
+        } else {
+            return Paths.get(baseWorldsDir, worldName.trim());
+        }
     }
     
     private Path worldFilePath(String worldName) {
-        return worldFolderPath(worldName).resolve(worldName + ".json");
+        if (isAndroid()) {
+            FileHandle file = Gdx.files.external(baseWorldsDir + "/" + worldName.trim() + "/" + worldName + ".json");
+            return Paths.get(file.path());
+        } else {
+            return worldFolderPath(worldName).resolve(worldName + ".json");
+        }
     }
 
     @SuppressWarnings("unused")
     public boolean worldExists(String worldName) {
-        Path folder = worldFolderPath(worldName);
-        Path worldFile = worldFilePath(worldName);
-        return Files.exists(folder) && Files.exists(worldFile);
+        if (isAndroid()) {
+            FileHandle folder = Gdx.files.external(baseWorldsDir + "/" + worldName.trim());
+            FileHandle worldFile = folder.child(worldName + ".json");
+            return folder.exists() && worldFile.exists();
+        } else {
+            Path folder = worldFolderPath(worldName);
+            Path worldFile = worldFilePath(worldName);
+            return Files.exists(folder) && Files.exists(worldFile);
+        }
     }
 
     public void loadWorld(String worldName, WorldData worldData) throws IOException {
@@ -158,18 +186,35 @@ public class JsonWorldDataService {
             throw new IllegalStateException("Cannot save a world with no name");
         }
 
-        Path folder = worldFolderPath(worldData.getWorldName());
-        if (!Files.exists(folder)) {
-            Files.createDirectories(folder);
-        }
+        if (isAndroid()) {
+            FileHandle folder = Gdx.files.external(baseWorldsDir + "/" + worldData.getWorldName().trim());
+            if (!folder.exists()) {
+                folder.mkdirs();
+            }
 
-        Path worldFile = worldFilePath(worldData.getWorldName());
-        try (Writer writer = Files.newBufferedWriter(worldFile)) {
-            json.toJson(worldData, writer);
-            log.info("Successfully saved world data for '{}'", worldData.getWorldName());
-        } catch (Exception e) {
-            log.error("Error saving world '{}': {}", worldData.getWorldName(), e.getMessage());
-            throw new IOException("Failed to save world", e);
+            FileHandle worldFile = folder.child(worldData.getWorldName() + ".json");
+            try {
+                String jsonStr = json.toJson(worldData);
+                worldFile.writeString(jsonStr, false);
+                log.info("Successfully saved world data for '{}'", worldData.getWorldName());
+            } catch (Exception e) {
+                log.error("Error saving world '{}': {}", worldData.getWorldName(), e.getMessage());
+                throw new IOException("Failed to save world", e);
+            }
+        } else {
+            Path folder = worldFolderPath(worldData.getWorldName());
+            if (!Files.exists(folder)) {
+                Files.createDirectories(folder);
+            }
+
+            Path worldFile = worldFilePath(worldData.getWorldName());
+            try (Writer writer = Files.newBufferedWriter(worldFile)) {
+                json.toJson(worldData, writer);
+                log.info("Successfully saved world data for '{}'", worldData.getWorldName());
+            } catch (Exception e) {
+                log.error("Error saving world '{}': {}", worldData.getWorldName(), e.getMessage());
+                throw new IOException("Failed to save world", e);
+            }
         }
     }
 
