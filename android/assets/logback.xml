@@ -2,14 +2,26 @@
 <configuration>
     <appender name="LOGCAT" class="ch.qos.logback.classic.android.LogcatAppender">
         <tagEncoder>
-            <pattern>MineMon:%logger{0}</pattern>
+            <pattern>MineMon</pattern>
         </tagEncoder>
         <encoder>
             <pattern>[%thread] %msg%n</pattern>
         </encoder>
     </appender>
 
-    <root level="DEBUG">
+    <!-- Set default logging level to INFO -->
+    <root level="INFO">
         <appender-ref ref="LOGCAT" />
     </root>
+
+    <!-- Specific package configurations -->
+    <logger name="io.github.minemon" level="INFO" />
+    <logger name="com.badlogic.gdx" level="WARN" />
+    <logger name="org.springframework" level="WARN" />
+    
+    <!-- Suppress specific noisy loggers -->
+    <logger name="io.github.minemon.world.service.impl.TileManager" level="WARN" />
+    <logger name="io.github.minemon.world.biome.config.BiomeConfigurationLoader" level="WARN" />
+    <logger name="io.github.minemon.world.service.impl.WorldObjectManager" level="WARN" />
+    <logger name="io.github.minemon.core.service.impl.ObjectTextureManager" level="WARN" />
 </configuration>

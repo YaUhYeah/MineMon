@@ -98,8 +98,18 @@ public class AndroidLauncher extends AndroidApplication {
 
         // Set global exception handler
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-            log.error("Uncaught exception in thread " + thread.getName(), throwable);
-            throwable.printStackTrace();
+            // Get root cause
+            Throwable rootCause = throwable;
+            while (rootCause.getCause() != null) {
+                rootCause = rootCause.getCause();
+            }
+            
+            // Log only the essential information
+            log.error("[{}] {}: {}", 
+                thread.getName(),
+                rootCause.getClass().getSimpleName(),
+                rootCause.getMessage());
+            
             finish();
         });
         
