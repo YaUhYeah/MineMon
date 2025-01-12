@@ -209,6 +209,13 @@ public class AndroidLauncher extends AndroidApplication {
             // Now that LibGDX is initialized, we can initialize the Android context
             try {
                 AndroidGameContext.initMinimal();
+                
+                // Register the game instance if not already registered
+                if (!AndroidGameContext.isRegistered(GdxGame.class)) {
+                    AndroidGameContext.register(GdxGame.class, game);
+                    log.info("Registered GdxGame instance in AndroidGameContext");
+                }
+
                 AndroidGameContext.initServices();
             } catch (Exception e) {
                 log.error("Failed to initialize Android game context", e);

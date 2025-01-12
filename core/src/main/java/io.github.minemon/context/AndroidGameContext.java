@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.Set;
 
 import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.backends.android.AndroidApplication;
 import io.github.minemon.audio.service.AudioService;
 import io.github.minemon.GdxGame;
 import io.github.minemon.core.config.GameConfig;
@@ -147,19 +146,7 @@ public class AndroidGameContext {
             register(settingsService);
 
 
-            // GdxGame is now initialized by AndroidLauncher
-            if (Gdx.app instanceof AndroidApplication) {
-                GdxGame game = ((AndroidApplication) Gdx.app).getApplicationListener();
-                if (game instanceof GdxGame) {
-                    register(game);
-                } else {
-                    log.error("Application listener is not a GdxGame instance");
-                    throw new IllegalStateException("Application listener is not a GdxGame instance");
-                }
-            } else {
-                log.error("Not running in AndroidApplication context");
-                throw new IllegalStateException("Not running in AndroidApplication context");
-            }
+            // GdxGame will be registered by the launcher
 
 
             registrationComplete = true;
@@ -172,7 +159,7 @@ public class AndroidGameContext {
     }
 
 
-    private static synchronized void register(Object bean) {
+    public static synchronized void register(Object bean) {
         Class<?> type = bean.getClass();
         beans.put(type, bean);
         for (Class<?> iface : type.getInterfaces()) {
@@ -181,9 +168,16 @@ public class AndroidGameContext {
         log.debug("Registered bean: {}", type.getSimpleName());
     }
 
-    private static synchronized void register(Class<?> type, Object bean) {
+    public static synchronized void register(Class<?> type, Object bean) {
+        if (beans.containsKey(type)) {
+            log.warn("Bean of type {} already registered, will be replaced", type.getSimpleName());
+        }
         beans.put(type, bean);
         log.debug("Registered bean type: {}", type.getSimpleName());
+    }
+
+    public static synchronized boolean isRegistered(Class<?> type) {
+        return beans.containsKey(type);
     }
     private static boolean registrationComplete = false;
 
