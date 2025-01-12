@@ -147,25 +147,30 @@ public class JsonWorldDataService {
             throw new IllegalArgumentException("WorldData instance cannot be null");
         }
 
-        Path worldFile = worldFilePath(worldName);
-        if (!Files.exists(worldFile)) {
-            throw new NoSuchFileException("World file not found: " + worldFile);
+        FileHandle worldFile;
+        if (isAndroid()) {
+            worldFile = Gdx.files.external(baseWorldsDir + "/" + worldName + "/" + worldName + ".json");
+        } else {
+            worldFile = Gdx.files.absolute(worldFilePath(worldName).toString());
         }
 
-        try (Reader reader = Files.newBufferedReader(worldFile)) {
-            WorldData loaded = json.fromJson(WorldData.class, reader);
+        if (!worldFile.exists()) {
+            throw new NoSuchFileException("World file not found: " + worldFile.path());
+        }
+
+        try {
+            String jsonContent = worldFile.readString();
+            WorldData loaded = json.fromJson(WorldData.class, jsonContent);
             if (loaded == null) {
                 throw new IOException("Failed to parse world data for " + worldName);
             }
 
-            
             worldData.setWorldName(loaded.getWorldName());
             worldData.setSeed(loaded.getSeed());
             worldData.setCreatedDate(loaded.getCreatedDate());
             worldData.setLastPlayed(loaded.getLastPlayed());
             worldData.setPlayedTime(loaded.getPlayedTime());
 
-            
             worldData.getPlayers().clear();
             worldData.getPlayers().putAll(loaded.getPlayers());
             worldData.getChunks().clear();
@@ -186,35 +191,25 @@ public class JsonWorldDataService {
             throw new IllegalStateException("Cannot save a world with no name");
         }
 
+        FileHandle folder;
         if (isAndroid()) {
-            FileHandle folder = Gdx.files.external(baseWorldsDir + "/" + worldData.getWorldName().trim());
-            if (!folder.exists()) {
-                folder.mkdirs();
-            }
-
-            FileHandle worldFile = folder.child(worldData.getWorldName() + ".json");
-            try {
-                String jsonStr = json.toJson(worldData);
-                worldFile.writeString(jsonStr, false);
-                log.info("Successfully saved world data for '{}'", worldData.getWorldName());
-            } catch (Exception e) {
-                log.error("Error saving world '{}': {}", worldData.getWorldName(), e.getMessage());
-                throw new IOException("Failed to save world", e);
-            }
+            folder = Gdx.files.external(baseWorldsDir + "/" + worldData.getWorldName().trim());
         } else {
-            Path folder = worldFolderPath(worldData.getWorldName());
-            if (!Files.exists(folder)) {
-                Files.createDirectories(folder);
-            }
+            folder = Gdx.files.absolute(worldFolderPath(worldData.getWorldName()).toString());
+        }
 
-            Path worldFile = worldFilePath(worldData.getWorldName());
-            try (Writer writer = Files.newBufferedWriter(worldFile)) {
-                json.toJson(worldData, writer);
-                log.info("Successfully saved world data for '{}'", worldData.getWorldName());
-            } catch (Exception e) {
-                log.error("Error saving world '{}': {}", worldData.getWorldName(), e.getMessage());
-                throw new IOException("Failed to save world", e);
-            }
+        if (!folder.exists()) {
+            folder.mkdirs();
+        }
+
+        FileHandle worldFile = folder.child(worldData.getWorldName() + ".json");
+        try {
+            String jsonStr = json.toJson(worldData);
+            worldFile.writeString(jsonStr, false);
+            log.info("Successfully saved world data for '{}'", worldData.getWorldName());
+        } catch (Exception e) {
+            log.error("Error saving world '{}': {}", worldData.getWorldName(), e.getMessage());
+            throw new IOException("Failed to save world", e);
         }
     }
 
@@ -222,35 +217,41 @@ public class JsonWorldDataService {
     
     
 
+    private FileHandle getChunkFile(String worldName, int chunkX, int chunkY) {
+        if (isAndroid()) {
+            FileHandle worldFolder = Gdx.files.external(baseWorldsDir + "/" + worldName);
+            return worldFolder.child("chunks").child(chunkX + "," + chunkY + ".json");
+        } else {
+            return Gdx.files.absolute(chunkFilePath(worldName, chunkX, chunkY).toString());
+        }
+    }
+
     public ChunkData loadChunk(String worldName, int chunkX, int chunkY) throws IOException {
-        Path p = chunkFilePath(worldName, chunkX, chunkY);
-        if (!Files.exists(p)) {
+        FileHandle chunkFile = getChunkFile(worldName, chunkX, chunkY);
+        if (!chunkFile.exists()) {
             return null;
         }
-        try (Reader r = Files.newBufferedReader(p)) {
-            return json.fromJson(ChunkData.class, r);
+        try {
+            return json.fromJson(ChunkData.class, chunkFile.readString());
+        } catch (Exception e) {
+            log.error("Error loading chunk {},{} for world {}: {}", chunkX, chunkY, worldName, e.getMessage());
+            return null;
         }
     }
 
     public void saveChunk(String worldName, ChunkData chunkData) throws IOException {
         synchronized (this) {
-            Path p = chunkFilePath(worldName, chunkData.getChunkX(), chunkData.getChunkY());
-            if (!Files.exists(p.getParent())) {
-                Files.createDirectories(p.getParent());
+            FileHandle chunkFile = getChunkFile(worldName, chunkData.getChunkX(), chunkData.getChunkY());
+            if (!chunkFile.parent().exists()) {
+                chunkFile.parent().mkdirs();
             }
             
-            Json localJson = new Json();
-            localJson.setIgnoreUnknownFields(true);
-
-            try (Writer writer = Files.newBufferedWriter(p)) {
-                localJson.toJson(chunkData, writer);
-            }
+            String jsonStr = json.toJson(chunkData);
+            chunkFile.writeString(jsonStr, false);
         }
     }
 
-
     private Path chunkFilePath(String worldName, int chunkX, int chunkY) {
-        
         return worldFolderPath(worldName)
             .resolve("chunks")
             .resolve(chunkX + "," + chunkY + ".json");
