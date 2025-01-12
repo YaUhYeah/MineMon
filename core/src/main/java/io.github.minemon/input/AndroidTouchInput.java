@@ -11,16 +11,28 @@ import com.badlogic.gdx.scenes.scene2d.ui.Touchpad.TouchpadStyle;
 import com.badlogic.gdx.scenes.scene2d.utils.Drawable;
 import io.github.minemon.player.model.PlayerDirection;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Component("androidTouchInput")
-@RequiredArgsConstructor
 public class AndroidTouchInput extends InputAdapter {
+    private static AndroidTouchInput instance;
     private static final float DEADZONE = 0.2f;
     private static final float VIRTUAL_PAD_SIZE = 200f;
-    
     private final InputService inputService;
+
+    public AndroidTouchInput(InputService inputService) {
+        this.inputService = inputService;
+        instance = this;
+    }
+
+    public static synchronized AndroidTouchInput getInstance(InputService inputService) {
+        if (instance == null) {
+            instance = new AndroidTouchInput(inputService);
+        }
+        return instance;
+    }
     private Touchpad touchpad;
     private Stage stage;
     @Getter

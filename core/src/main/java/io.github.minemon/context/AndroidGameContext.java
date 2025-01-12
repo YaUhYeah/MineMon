@@ -115,8 +115,11 @@ public class AndroidGameContext {
             InputConfiguration inputConfig = new InputConfiguration();
             register(inputConfig);
             
-            AndroidTouchInput touchInput = new AndroidTouchInput(new InputService(inputConfig));
-            register(touchInput);
+            InputService inputService = new InputService(inputConfig);
+            register(inputService);
+            
+            AndroidTouchInput touchInput = new AndroidTouchInput(inputService);
+            register(AndroidTouchInput.class, touchInput);
             
             // Event handling
             ApplicationEventPublisher eventPublisher = new AndroidEventPublisher();

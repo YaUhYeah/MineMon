@@ -136,8 +136,14 @@ public class GdxGame extends Game {
         if (isAndroid) {
             try {
                 if (!touchInputInitialized) {
-                    ApplicationContext context = GameApplicationContext.getContext();
-                    touchInput = context.getBean(AndroidTouchInput.class);
+                    try {
+                        ApplicationContext context = GameApplicationContext.getContext();
+                        touchInput = context.getBean(AndroidTouchInput.class);
+                    } catch (Exception e) {
+                        // Fallback to getInstance if bean lookup fails
+                        InputService inputService = GameApplicationContext.getBean(InputService.class);
+                        touchInput = AndroidTouchInput.getInstance(inputService);
+                    }
                     touchInputInitialized = true;
                 }
                 
