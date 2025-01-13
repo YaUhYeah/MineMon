@@ -432,7 +432,7 @@ public class AndroidGameContext {
 
         @Override
         public <T> T getBean(Class<T> requiredType) {
-            throw new UnsupportedOperationException();
+            return AndroidGameContext.getBean(requiredType);
         }
 
         @Override

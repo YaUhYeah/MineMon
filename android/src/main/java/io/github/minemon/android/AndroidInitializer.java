@@ -148,7 +148,9 @@ public class AndroidInitializer {
 
             // Copy other necessary config files
             String[] configFiles = {
-                "config/tiles.json"
+                "config/tiles.json",
+                "config/biomes.json",
+                "data/biomes.json"  // Also copy data/biomes.json if needed
             };
 
             for (String configFile : configFiles) {
