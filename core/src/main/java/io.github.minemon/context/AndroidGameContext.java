@@ -261,9 +261,12 @@ public class AndroidGameContext {
     }
     private static void registerRemainingServices() {
         try {
-
+            // Core UI Services
             UiService uiService = new UiService();
             register(uiService);
+
+            BackgroundService backgroundService = new BackgroundService();
+            register(backgroundService);
 
             ObjectTextureManager objectTextureManager = new ObjectTextureManager();
             register(objectTextureManager);
@@ -348,6 +351,60 @@ public class AndroidGameContext {
 
             ScreenManagerImpl screenManager = new ScreenManagerImpl(applicationContext, getBean(GdxGame.class));
             register(screenManager);
+
+            // Register all screens
+            ModeSelectionScreen modeSelectionScreen = new ModeSelectionScreen(
+                getBean(AudioService.class),
+                screenManager,
+                getBean(SettingsService.class),
+                getBean(BackgroundService.class)
+            );
+            register(ModeSelectionScreen.class, modeSelectionScreen);
+
+            GameScreen gameScreen = new GameScreen(
+                getBean(WorldService.class),
+                getBean(PlayerService.class),
+                screenManager,
+                getBean(UiService.class),
+                getBean(InputService.class),
+                getBean(AudioService.class),
+                getBean(SettingsService.class)
+            );
+            register(GameScreen.class, gameScreen);
+
+            WorldSelectionScreen worldSelectionScreen = new WorldSelectionScreen(
+                screenManager,
+                getBean(WorldService.class),
+                getBean(BackgroundService.class)
+            );
+            register(WorldSelectionScreen.class, worldSelectionScreen);
+
+            LoginScreen loginScreen = new LoginScreen(
+                screenManager,
+                getBean(MultiplayerClient.class),
+                getBean(BackgroundService.class)
+            );
+            register(LoginScreen.class, loginScreen);
+
+            InventoryScreen inventoryScreen = new InventoryScreen(
+                screenManager,
+                getBean(InventoryService.class),
+                getBean(PlayerService.class)
+            );
+            register(InventoryScreen.class, inventoryScreen);
+
+            SettingsScreen settingsScreen = new SettingsScreen(
+                screenManager,
+                getBean(SettingsService.class),
+                getBean(BackgroundService.class)
+            );
+            register(SettingsScreen.class, settingsScreen);
+
+            ServerDisconnectScreen serverDisconnectScreen = new ServerDisconnectScreen(
+                screenManager,
+                getBean(BackgroundService.class)
+            );
+            register(ServerDisconnectScreen.class, serverDisconnectScreen);
 
             log.debug("All remaining services registered successfully");
 
