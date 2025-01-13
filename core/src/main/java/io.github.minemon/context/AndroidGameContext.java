@@ -378,6 +378,8 @@ public class AndroidGameContext {
                 getBean(BackgroundService.class)
             );
             modeSelectionScreen.setMultiplayerClient(getBean(MultiplayerClient.class));
+            modeSelectionScreen.setWorldService(getBean(WorldService.class));
+
             register(ModeSelectionScreen.class, modeSelectionScreen);
 
             GameScreen gameScreen = new GameScreen(
@@ -403,7 +405,7 @@ public class AndroidGameContext {
             LoginScreen loginScreen = new LoginScreen(
                 getBean(AudioService.class),
                 getBean(ScreenManager.class),
-               serverConnectionService,
+                serverConnectionService,
                 getBean(MultiplayerClient.class),
                 getBean(UiService.class)
             );

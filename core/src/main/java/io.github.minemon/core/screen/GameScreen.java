@@ -43,7 +43,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Scope("prototype")
 @Slf4j
 public class GameScreen implements Screen {
-    private static final long CHUNK_UPDATE_INTERVAL = 250; 
+    private static final long CHUNK_UPDATE_INTERVAL = 250;
     private final float TARGET_VIEWPORT_WIDTH_TILES = 24f;
     private final int TILE_SIZE = 32;
     private final PlayerService playerService;
@@ -84,7 +84,6 @@ public class GameScreen implements Screen {
     private final ChunkLoadingManager chunkLoadingManager;
     private long lastChunkUpdate = 0;
     @Autowired
-    @Lazy
     private HotbarUI hotbarUI;
 
     @Autowired
@@ -114,12 +113,12 @@ public class GameScreen implements Screen {
     }
 
     private void handleDisconnection() {
-        
+
         if (!isActuallyMultiplayer) {
             return;
         }
 
-        
+
         if (!handlingDisconnect && multiplayerClient != null
             && !multiplayerClient.isConnected()
             && worldService.isMultiplayerMode()) {
@@ -170,7 +169,7 @@ public class GameScreen implements Screen {
         inventoryScreen.init();
         itemTextureManager.initialize(new TextureAtlas(Gdx.files.internal("atlas/items-gfx-atlas.atlas")));
 
-        
+
         if (worldService.isMultiplayerMode() &&
             worldService.getWorldData().getWorldName() == null) {
             worldService.getWorldData().setWorldName("serverWorld");
@@ -178,7 +177,7 @@ public class GameScreen implements Screen {
             log.info("Initialized multiplayer world in GameScreen");
         }
 
-        
+
         PlayerData pd = playerService.getPlayerData().getUsername() != null
             ? playerService.getPlayerData()
             : null;
@@ -201,19 +200,19 @@ public class GameScreen implements Screen {
         font = new BitmapFont();
         initializeUI();
 
-        
+
         multiplexer = new InputMultiplexer();
 
-        
+
         inputService.activate();
 
-        
+
         multiplexer.addProcessor(inputService);
         multiplexer.addProcessor(hotbarUI.getStage());
         multiplexer.addProcessor(hudStage);
         multiplexer.addProcessor(chatTable.getStage());
 
-        
+
         Gdx.input.setInputProcessor(multiplexer);
 
         audioService.playMenuMusic();
@@ -320,35 +319,35 @@ public class GameScreen implements Screen {
 
             PlayerData player = playerService.getPlayerData();
             if (player != null) {
-                
+
                 chunkLoadingManager.preloadChunksAroundPosition(
                     player.getX(),
                     player.getY()
                 );
             }
 
-            
+
             chunkLoadingManager.update();
         }
     }
 
     @Override
     public void render(float delta) {
-        
+
         handleDisconnection();
 
         if (!handlingDisconnect) {
 
-            
+
             updateChunkLoading();
 
-            
+
             if (!paused) {
 
                 updateGame(delta);
             }
 
-            
+
             renderGame(delta);
         }
     }
@@ -385,16 +384,16 @@ public class GameScreen implements Screen {
             return;
         }
 
-        
+
         float maxCoord = 1000000f;
         float boundedX = Math.max(-maxCoord, Math.min(maxCoord, pd.getX()));
         float boundedY = Math.max(-maxCoord, Math.min(maxCoord, pd.getY()));
 
-        
+
         float playerPixelX = boundedX * TILE_SIZE;
         float playerPixelY = boundedY * TILE_SIZE;
 
-        
+
         if (Float.isNaN(playerPixelX) || Float.isInfinite(playerPixelX) ||
             Float.isNaN(playerPixelY) || Float.isInfinite(playerPixelY)) {
             log.error("Invalid position conversion: {},{} -> {},{}",
@@ -403,32 +402,32 @@ public class GameScreen implements Screen {
             playerPixelY = 0;
         }
 
-        
+
         cameraPosX = playerPixelX;
         cameraPosY = playerPixelY;
         camera.position.set(cameraPosX, cameraPosY, 0);
         camera.update();
 
-        
+
         playerService.setPosition((int) (boundedX), (int) (boundedY));
 
-        
+
         chunkLoadingManager.preloadChunksAroundPosition(boundedX, boundedY);
 
-        
+
     }
 
     private void teleportPlayer(float x, float y) {
-        
+
         chunkLoadingManager.preloadChunksAroundPosition(x, y);
 
-        
+
         PlayerData player = playerService.getPlayerData();
         player.setX(x);
         player.setY(y);
         playerService.setPosition((int) x, (int) y);
 
-        
+
         float pixelX = x * TILE_SIZE;
         float pixelY = y * TILE_SIZE;
         cameraPosX = pixelX;
@@ -436,7 +435,7 @@ public class GameScreen implements Screen {
         camera.position.set(cameraPosX, cameraPosY, 0);
         camera.update();
 
-        
+
         if (multiplayerClient.isConnected()) {
             multiplayerClient.sendPlayerMove(
                 x, y,
@@ -470,7 +469,7 @@ public class GameScreen implements Screen {
         Map<String, PlayerSyncData> states = multiplayerClient.getPlayerStates();
         String localUsername = playerService.getPlayerData().getUsername();
 
-        
+
         for (Map.Entry<String, PlayerSyncData> entry : states.entrySet()) {
             String otherUsername = entry.getKey();
             if (otherUsername.equals(localUsername)) continue;
@@ -481,27 +480,27 @@ public class GameScreen implements Screen {
                 otherUsername,
                 k -> {
                     RemotePlayerAnimator newAnimator = new RemotePlayerAnimator();
-                    
+
                     newAnimator.setPosition(psd.getX() * TILE_SIZE, psd.getY() * TILE_SIZE);
                     return newAnimator;
                 }
             );
 
-            
+
             float targetTileX = psd.getX() * TILE_SIZE;
             float targetTileY = psd.getY() * TILE_SIZE;
 
-            
+
             animator.updateState(
                 targetTileX,
                 targetTileY,
                 psd.isRunning(),
                 PlayerDirection.valueOf(psd.getDirection().toUpperCase()),
-                psd.isMoving() && isTrulyMoving(psd), 
+                psd.isMoving() && isTrulyMoving(psd),
                 delta
             );
 
-            
+
             TextureRegion frame = animationService.getCurrentFrame(
                 animator.getDirection(),
                 animator.isMoving(),
@@ -509,7 +508,7 @@ public class GameScreen implements Screen {
                 animator.getAnimationTime()
             );
 
-            
+
             float drawX = animator.getCurrentX();
             float drawY = animator.getCurrentY();
 
@@ -519,11 +518,11 @@ public class GameScreen implements Screen {
 
         }
 
-        
+
         remotePlayerAnimators.keySet().removeIf(username -> !states.containsKey(username));
     }
 
-    
+
     private boolean isTrulyMoving(PlayerSyncData psd) {
         float lastX = psd.getLastX();
         float lastY = psd.getLastY();
@@ -540,23 +539,23 @@ public class GameScreen implements Screen {
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        
+
         worldRenderer.render(camera, delta);
 
-        
+
         batch.setProjectionMatrix(camera.combined);
         batch.begin();
         playerService.render(batch);
 
-        
+
         renderRemotePlayers(batch, delta);
         batch.end();
 
         worldRenderer.renderTreeTops(delta);
         inventoryScreen.render(delta);
-        
 
-        
+
+
         if (paused) {
             pauseStage.draw();
         }
@@ -674,36 +673,36 @@ public class GameScreen implements Screen {
     @Override
     public void hide() {
         if (multiplayerClient.isConnected()) {
-            
+
             multiplayerClient.disconnect();
-            
+
             worldService.handleDisconnect();
         }
 
-        
+
         inputService.deactivate();
 
-        
+
         if (multiplexer != null) {
             Gdx.input.setInputProcessor(null);
         }
 
-        
+
         if (chatService != null && chatTable != null) {
             chatTable.deactivate();
         }
 
-        
+
         audioService.stopMenuMusic();
 
-        
+
         handlingDisconnect = false;
     }
     private void goBackToMenu() {
-        
+
         inputService.deactivate();
 
-        
+
         if (multiplexer != null) {
             Gdx.input.setInputProcessor(null);
             multiplexer = null;
@@ -714,7 +713,7 @@ public class GameScreen implements Screen {
             worldService.handleDisconnect();
         }
 
-        
+
         if (hotbarUI != null) {
             hotbarUI.dispose();
         }
@@ -727,14 +726,14 @@ public class GameScreen implements Screen {
             chatTable.deactivate();
         }
 
-        
+
         worldService.clearWorldData();
         worldService.setMultiplayerMode(false);
 
-        
+
         connectionManager.releaseInstanceLock();
 
-        
+
         screenManager.showScreen(ModeSelectionScreen.class);
     }
 
@@ -784,10 +783,10 @@ public class GameScreen implements Screen {
             worldRenderer.dispose();
         }
 
-        
+
         chunkLoadingManager.dispose();
 
-        
+
         if (multiplexer != null) {
             multiplexer = null;
         }
