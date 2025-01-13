@@ -12,6 +12,7 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import io.github.minemon.audio.service.AudioService;
 import io.github.minemon.chat.service.ChatService;
 import io.github.minemon.chat.ui.ChatTable;
+import io.github.minemon.context.GameApplicationContext;
 import io.github.minemon.core.service.ScreenManager;
 import io.github.minemon.core.ui.HotbarUI;
 import io.github.minemon.input.InputService;
@@ -137,13 +138,30 @@ public class GameScreen implements Screen {
     }
     @Override
     public void show() {
-        if (!worldRendererIsInitialized()) {
-            worldRenderer.initialize();
-        }
+        try {
+            if (!worldRendererIsInitialized()) {
+                worldRenderer.initialize();
+            }
 
-        hotbarUI.initialize();
-        handlingDisconnect = false;
-        isActuallyMultiplayer = worldService.isMultiplayerMode();
+            // Initialize HotbarUI if needed
+            if (hotbarUI == null) {
+                log.error("HotbarUI is null - this should not happen, check Spring configuration");
+                throw new IllegalStateException("HotbarUI is null");
+            }
+            hotbarUI.initialize();
+
+            // Check WorldService
+            if (worldService == null) {
+                log.error("WorldService is null - this should not happen, check Spring configuration");
+                throw new IllegalStateException("WorldService is null");
+            }
+
+            handlingDisconnect = false;
+            isActuallyMultiplayer = worldService.isMultiplayerMode();
+        } catch (Exception e) {
+            log.error("Failed to initialize game screen", e);
+            throw new RuntimeException("Failed to initialize game screen", e);
+        }
 
         log.debug("GameScreen.show() >> current worldName={}, seed={}",
             worldService.getWorldData().getWorldName(),

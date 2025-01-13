@@ -34,7 +34,8 @@ public class AndroidInitializer {
                 "save/players",
                 "cache",
                 "data",
-                "temp"
+                "temp",
+                "config"  // Add config directory
             };
 
             for (String dir : dirs) {
@@ -112,6 +113,106 @@ public class AndroidInitializer {
             }
         } catch (Exception e) {
             log.error("Directory access validation failed", e);
+        }
+    }
+
+    public void copyAssets() {
+        try {
+            File externalDir = context.getExternalFilesDir(null);
+            if (externalDir == null) {
+                log.error("External storage not available");
+                return;
+            }
+
+            // Copy biomes.json
+            File configDir = new File(externalDir, "config");
+            File biomesFile = new File(configDir, "biomes.json");
+            if (!biomesFile.exists()) {
+                try {
+                    java.io.InputStream in = context.getAssets().open("config/biomes.json");
+                    java.io.OutputStream out = new java.io.FileOutputStream(biomesFile);
+                    byte[] buffer = new byte[8192];
+                    int read;
+                    while ((read = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, read);
+                    }
+                    in.close();
+                    out.flush();
+                    out.close();
+                    log.info("Successfully copied biomes.json to {}", biomesFile.getAbsolutePath());
+                } catch (IOException e) {
+                    log.error("Failed to copy biomes.json", e);
+                    throw e;
+                }
+            }
+
+            // Copy other necessary config files
+            String[] configFiles = {
+                "config/tiles.json"
+            };
+
+            for (String configFile : configFiles) {
+                File destFile = new File(externalDir, configFile);
+                if (!destFile.exists()) {
+                    destFile.getParentFile().mkdirs();
+                    try {
+                        java.io.InputStream in = context.getAssets().open(configFile);
+                        java.io.OutputStream out = new java.io.FileOutputStream(destFile);
+                        byte[] buffer = new byte[8192];
+                        int read;
+                        while ((read = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, read);
+                        }
+                        in.close();
+                        out.flush();
+                        out.close();
+                        log.info("Successfully copied {} to {}", configFile, destFile.getAbsolutePath());
+                    } catch (IOException e) {
+                        log.error("Failed to copy {}", configFile, e);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to copy assets", e);
+            throw new RuntimeException("Failed to copy assets", e);
+        }
+    }
+
+    public void copyAssetsIfNeeded() {
+        try {
+            File externalDir = context.getExternalFilesDir(null);
+            if (externalDir == null) {
+                log.error("External storage not available");
+                return;
+            }
+
+            // Create config directory
+            File configDir = new File(externalDir, "config");
+            if (!configDir.exists() && !configDir.mkdirs()) {
+                log.error("Failed to create config directory");
+                return;
+            }
+
+            // Copy biomes.json
+            File biomesFile = new File(configDir, "biomes.json");
+            if (!biomesFile.exists()) {
+                try {
+                    java.io.InputStream in = context.getAssets().open("config/biomes.json");
+                    java.io.OutputStream out = new java.io.FileOutputStream(biomesFile);
+                    byte[] buffer = new byte[1024];
+                    int read;
+                    while ((read = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, read);
+                    }
+                    in.close();
+                    out.close();
+                    log.info("Successfully copied biomes.json to {}", biomesFile.getAbsolutePath());
+                } catch (IOException e) {
+                    log.error("Failed to copy biomes.json", e);
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to copy assets", e);
         }
     }
 

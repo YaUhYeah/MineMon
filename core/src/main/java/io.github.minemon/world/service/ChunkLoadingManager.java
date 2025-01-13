@@ -1,6 +1,7 @@
 package io.github.minemon.world.service;
 
 import com.badlogic.gdx.math.Vector2;
+import io.github.minemon.context.GameApplicationContext;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -55,6 +56,17 @@ public class ChunkLoadingManager {
     }
 
     public void queueChunkRequest(int x, int y, boolean highPriority) {
+        // Check if services are available
+        if (worldService == null) {
+            log.error("WorldService is null - this should not happen, check Spring configuration");
+            throw new IllegalStateException("WorldService is null");
+        }
+
+        if (multiplayerClient == null) {
+            log.error("MultiplayerClient is null - this should not happen, check Spring configuration");
+            throw new IllegalStateException("MultiplayerClient is null");
+        }
+
         Vector2 pos = new Vector2(x, y);
         if (worldService.isMultiplayerMode()) {
             

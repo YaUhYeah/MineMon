@@ -63,10 +63,23 @@ public class AndroidGameContext {
             try {
                 log.info("Initializing minimal Android game context");
 
-                // Ensure Gdx.app is available
+                // Ensure LibGDX is properly initialized
                 if (Gdx.app == null) {
-                    log.error("LibGDX application not initialized");
-                    throw new IllegalStateException("LibGDX application not initialized");
+                    log.error("LibGDX application must be initialized before calling initMinimal");
+                    throw new IllegalStateException("Call initialize() on AndroidApplication first");
+                }
+
+                // Wait for GL context with a shorter timeout
+                int attempts = 0;
+                while (Gdx.graphics.getGL20() == null && attempts < 5) {
+                    try {
+                        Thread.sleep(200);
+                        attempts++;
+                        log.debug("Waiting for GL context, attempt {}/5", attempts);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
                 }
 
                 // Register core beans in a safe order
@@ -134,8 +147,7 @@ public class AndroidGameContext {
             register(settingsService);
 
 
-            GdxGame game = new GdxGame();
-            register(game);
+            // GdxGame will be registered by the launcher
 
 
             registrationComplete = true;
@@ -148,7 +160,7 @@ public class AndroidGameContext {
     }
 
 
-    private static synchronized void register(Object bean) {
+    public static synchronized void register(Object bean) {
         Class<?> type = bean.getClass();
         beans.put(type, bean);
         for (Class<?> iface : type.getInterfaces()) {
@@ -157,9 +169,16 @@ public class AndroidGameContext {
         log.debug("Registered bean: {}", type.getSimpleName());
     }
 
-    private static synchronized void register(Class<?> type, Object bean) {
+    public static synchronized void register(Class<?> type, Object bean) {
+        if (beans.containsKey(type)) {
+            log.warn("Bean of type {} already registered, will be replaced", type.getSimpleName());
+        }
         beans.put(type, bean);
         log.debug("Registered bean type: {}", type.getSimpleName());
+    }
+
+    public static synchronized boolean isRegistered(Class<?> type) {
+        return beans.containsKey(type);
     }
     private static boolean registrationComplete = false;
 
