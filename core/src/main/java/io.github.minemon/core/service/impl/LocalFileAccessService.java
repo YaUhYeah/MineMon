@@ -15,8 +15,15 @@ public class LocalFileAccessService implements FileAccessService {
         }
 
         if (isAndroid()) {
-            // On Android, use external files directory
-            return Gdx.files.external("Android/data/io.github.minemon/files/" + path);
+            // First try internal assets
+            if (path.startsWith("config/") || path.startsWith("data/")) {
+                FileHandle internal = Gdx.files.internal(path);
+                if (internal.exists()) {
+                    return internal;
+                }
+            }
+            // Then try external files directory
+            return Gdx.files.external(path);
         } else {
             return Gdx.files.local(path);
         }
@@ -91,7 +98,7 @@ public class LocalFileAccessService implements FileAccessService {
 
         if (isAndroid()) {
             // On Android, use the external files directory path
-            return Gdx.files.external("Android/data/io.github.minemon/files").path();
+            return Gdx.files.external("").path();
         } else {
             // On desktop, use the working directory
             return Gdx.files.local("").file().getAbsolutePath();
