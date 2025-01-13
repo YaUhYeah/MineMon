@@ -15,6 +15,7 @@ import io.github.minemon.world.model.WorldObject;
 import io.github.minemon.world.service.WorldObjectManager;
 import io.github.minemon.world.service.WorldService;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -24,6 +25,7 @@ import java.util.List;
 
 @Service
 @Slf4j
+@Setter
 @RequiredArgsConstructor
 public class InputService extends InputAdapter {
     private static final float TILE_SIZE = 32f;
@@ -40,7 +42,7 @@ public class InputService extends InputAdapter {
 
     public void simulateKeyPress(PlayerDirection direction) {
         if (!isActive || !isAndroid) return;
-        
+
         resetKeys();
         switch (direction) {
             case UP -> upPressed = true;
@@ -57,8 +59,6 @@ public class InputService extends InputAdapter {
     @Autowired @Lazy private PlayerService playerService;
     @Autowired @Lazy private InventoryScreen inventoryScreen;
     @Autowired @Lazy private WorldService worldService;
-    @Autowired @Lazy private WorldObjectManager worldObjectManager;
-    @Autowired @Lazy private InventoryService inventoryService;
 
     public void activate() {
         isActive = true;

@@ -1,0 +1,42 @@
+{
+  "biomes": [
+    {
+      "name": "Plains",
+      "type": "PLAINS",
+      "allowedTileTypes": [0, 1],
+      "tileDistribution": {
+        "0": 60.0,
+        "1": 40.0
+      },
+      "spawnableObjects": [
+        "TREE_0",
+        "TREE_1",
+        "SUNFLOWER",
+        "APRICORN_TREE"
+      ],
+      "spawnChances": {
+        "SUNFLOWER": 0.1,
+        "TREE_0": 0.09,
+        "TREE_1": 0.09,
+        "APRICORN_TREE": 0.075
+      }
+    },
+    {
+      "name": "Desert",
+      "type": "DESERT",
+      "allowedTileTypes": [2, 3],
+      "tileDistribution": {
+        "2": 65.0,
+        "3": 35.0
+      },
+      "spawnableObjects": [
+        "CACTUS",
+        "DEAD_TREE"
+      ],
+      "spawnChances": {
+        "CACTUS": 0.1,
+        "DEAD_TREE": 0.1
+      }
+    }
+  ]
+}

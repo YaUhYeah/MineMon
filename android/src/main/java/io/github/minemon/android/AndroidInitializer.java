@@ -124,8 +124,14 @@ public class AndroidInitializer {
                 return;
             }
 
-            // Copy biomes.json
+            // Create config directory
             File configDir = new File(externalDir, "config");
+            if (!configDir.exists() && !configDir.mkdirs()) {
+                log.error("Failed to create config directory");
+                throw new RuntimeException("Failed to create config directory");
+            }
+
+            // Copy biomes.json
             File biomesFile = new File(configDir, "biomes.json");
             if (!biomesFile.exists()) {
                 try {
@@ -146,15 +152,26 @@ public class AndroidInitializer {
                 }
             }
 
-            // Copy other necessary config files
+            // Copy all necessary config files
             String[] configFiles = {
-                "config/tiles.json"
+                "config/tiles.json",
+                "config/biomes.json",
+                "data/biomes.json",
+                "Skins/uiskin.json",
+                "atlas/items-gfx-atlas.atlas",
+                "atlas/ui-gfx-atlas.atlas",
+                "shaders/menu_background.vert",
+                "shaders/menu_background.frag"
             };
 
             for (String configFile : configFiles) {
                 File destFile = new File(externalDir, configFile);
                 if (!destFile.exists()) {
-                    destFile.getParentFile().mkdirs();
+                    File parentDir = destFile.getParentFile();
+                    if (!parentDir.exists() && !parentDir.mkdirs()) {
+                        log.error("Failed to create directory: {}", parentDir.getAbsolutePath());
+                        throw new RuntimeException("Failed to create directory: " + parentDir.getAbsolutePath());
+                    }
                     try {
                         java.io.InputStream in = context.getAssets().open(configFile);
                         java.io.OutputStream out = new java.io.FileOutputStream(destFile);

@@ -33,8 +33,6 @@ public class ModeSelectionScreen implements Screen {
     private final ScreenManager screenManager;
     private final SettingsService settingsService;
     private final BackgroundService backgroundAnimation;
-    @Autowired
-    @Lazy
     @Setter
     private MultiplayerClient multiplayerClient;
     @Autowired
@@ -50,19 +48,19 @@ public class ModeSelectionScreen implements Screen {
     public void show() {
         try {
             log.info("ModeSelectionScreen show() called");
-            
+
             ensureInitialized();
 
-            
+
             if (stage != null) {
                 Gdx.input.setInputProcessor(stage);
                 log.info("Stage set as input processor");
             }
 
-            
+
             backgroundAnimation.initialize();
 
-            
+
             Gdx.app.postRunnable(() -> {
                 try {
                     audioService.playMenuMusic();
@@ -81,18 +79,18 @@ public class ModeSelectionScreen implements Screen {
             try {
                 log.info("Starting ModeSelectionScreen initialization");
 
-                
+
                 String skinPath = "Skins/uiskin.json";
                 if (!Gdx.files.internal(skinPath).exists()) {
                     log.error("UI skin not found at: {}", skinPath);
                     throw new RuntimeException("Required UI skin missing: " + skinPath);
                 }
 
-                
+
                 ScreenViewport viewport = new ScreenViewport();
                 stage = new Stage(viewport);
 
-                
+
                 try {
                     skin = new Skin(Gdx.files.internal(skinPath));
                     log.info("UI skin loaded successfully");
@@ -120,7 +118,7 @@ public class ModeSelectionScreen implements Screen {
             if (!initialized) {
                 ensureInitialized();
             }
-            
+
             Gdx.gl.glClearColor(0.2f, 0.2f, 0.2f, 1);
             Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
@@ -184,7 +182,7 @@ public class ModeSelectionScreen implements Screen {
         singlePlayerButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                if (multiplayerClient.isConnected()) {
+                if (multiplayerClient != null && multiplayerClient.isConnected()) {
                     multiplayerClient.disconnect();
                 }
                 worldService.handleDisconnect();
@@ -247,9 +245,9 @@ public class ModeSelectionScreen implements Screen {
             @Override
             public void changed(ChangeListener.ChangeEvent event, Actor actor) {
                 float newVolume = musicSlider.getValue();
-                
+
                 settingsService.updateMusicVolume(newVolume);
-                
+
                 audioService.setMusicVolume(newVolume);
             }
         });

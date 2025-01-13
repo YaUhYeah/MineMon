@@ -10,20 +10,27 @@ import java.util.Set;
 import com.badlogic.gdx.Gdx;
 import io.github.minemon.audio.service.AudioService;
 import io.github.minemon.GdxGame;
+import io.github.minemon.chat.service.ChatService;
 import io.github.minemon.core.config.GameConfig;
-import io.github.minemon.core.service.SettingsService;
-import io.github.minemon.core.service.UiService;
+import io.github.minemon.core.screen.*;
+import io.github.minemon.core.service.*;
 import io.github.minemon.core.service.impl.AndroidAssetManager;
 import io.github.minemon.core.service.impl.ScreenManagerImpl;
+import io.github.minemon.core.ui.HotbarUI;
 import io.github.minemon.input.AndroidTouchInput;
 import io.github.minemon.input.InputConfiguration;
 import io.github.minemon.input.InputService;
+import io.github.minemon.inventory.service.InventoryService;
+import io.github.minemon.inventory.service.impl.ItemTextureManager;
+import io.github.minemon.multiplayer.service.MultiplayerClient;
+import io.github.minemon.multiplayer.service.ServerConnectionService;
+import io.github.minemon.multiplayer.service.impl.ClientConnectionManager;
+import io.github.minemon.multiplayer.service.impl.ServerConnectionServiceImpl;
 import io.github.minemon.player.service.PlayerAnimationService;
+import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.biome.service.BiomeService;
-import io.github.minemon.world.service.ChunkLoadingManager;
-import io.github.minemon.world.service.TileManager;
-import io.github.minemon.world.service.WorldObjectManager;
-import io.github.minemon.world.service.WorldService;
+import io.github.minemon.world.model.WorldRenderer;
+import io.github.minemon.world.service.*;
 import io.github.minemon.world.service.impl.*;
 import io.github.minemon.player.service.impl.PlayerServiceImpl;
 import io.github.minemon.player.service.impl.PlayerAnimationServiceImpl;
@@ -35,7 +42,6 @@ import io.github.minemon.chat.service.impl.ChatServiceImpl;
 import io.github.minemon.chat.service.impl.CommandServiceImpl;
 import io.github.minemon.world.biome.service.impl.BiomeServiceImpl;
 import io.github.minemon.world.config.WorldConfig;
-import io.github.minemon.core.service.FileAccessService;
 import io.github.minemon.core.service.impl.LocalFileAccessService;
 import io.github.minemon.world.biome.config.BiomeConfigurationLoader;
 import lombok.extern.slf4j.Slf4j;
@@ -57,6 +63,7 @@ public class AndroidGameContext {
     private static final Map<Class<?>, Object> beans = new HashMap<>();
     private static boolean minimalInitialized = false;
     private static boolean fullyInitialized = false;
+    private static boolean registrationComplete = false;
 
     public static void initMinimal() {
         if (!minimalInitialized) {
@@ -113,6 +120,7 @@ public class AndroidGameContext {
             throw e;
         }
     }
+
     private static void registerCoreBeans() {
         try {
             // Core configuration
@@ -159,7 +167,6 @@ public class AndroidGameContext {
         }
     }
 
-
     public static synchronized void register(Object bean) {
         Class<?> type = bean.getClass();
         beans.put(type, bean);
@@ -180,7 +187,6 @@ public class AndroidGameContext {
     public static synchronized boolean isRegistered(Class<?> type) {
         return beans.containsKey(type);
     }
-    private static boolean registrationComplete = false;
 
     @SuppressWarnings("unchecked")
     public static <T> T getBean(Class<T> type) {
@@ -196,6 +202,7 @@ public class AndroidGameContext {
         }
         return bean;
     }
+
     public static void initServices() {
         if (!minimalInitialized) {
             throw new IllegalStateException("Must call initMinimal first");
@@ -213,6 +220,7 @@ public class AndroidGameContext {
             }
         }
     }
+
     private static void cleanup() {
         try {
             log.info("Cleaning up failed initialization");
@@ -223,6 +231,7 @@ public class AndroidGameContext {
             log.error("Cleanup failed", e);
         }
     }
+
     private static void initializeServices() {
         if (Gdx.files == null) {
             throw new IllegalStateException("LibGDX not initialized");
@@ -251,7 +260,7 @@ public class AndroidGameContext {
                 getBean(AudioService.class).initAudio();
                 getBean(BiomeService.class).init();
             } else {
-               log.warn("OpenGL context not ready, deferring GL-dependent service initialization");
+                log.warn("OpenGL context not ready, deferring GL-dependent service initialization");
             }
 
         } catch (Exception e) {
@@ -259,11 +268,15 @@ public class AndroidGameContext {
             throw e;
         }
     }
+
     private static void registerRemainingServices() {
         try {
-
+            // Core UI Services
             UiService uiService = new UiService();
             register(uiService);
+
+            BackgroundService backgroundService = new BackgroundService();
+            register(backgroundService);
 
             ObjectTextureManager objectTextureManager = new ObjectTextureManager();
             register(objectTextureManager);
@@ -309,12 +322,10 @@ public class AndroidGameContext {
                 biomeLoader,
                 biomeService,
                 objectTextureManager,
-                jsonWorldDataService,fileAccessService
+                jsonWorldDataService, fileAccessService
             );
             register(worldService);
 
-            ChunkLoadingManager chunkLoadingManager = new ChunkLoadingManager();
-            register(chunkLoadingManager);
 
 
             PlayerAnimationServiceImpl playerAnimationService = new PlayerAnimationServiceImpl();
@@ -330,8 +341,20 @@ public class AndroidGameContext {
             register(playerService);
 
 
+            ChunkLoadingManager chunkLoadingManager = new ChunkLoadingManager();
+            chunkLoadingManager.setWorldService(getBean(WorldService.class));
+            chunkLoadingManager.setMultiplayerClient(getBean(MultiplayerClient.class));
+            register(chunkLoadingManager);
+
             AudioServiceImpl audioService = new AudioServiceImpl();
             register(audioService);
+            WorldRenderer worldRenderer = new WorldRenderer(
+                getBean(WorldService.class),
+                getBean(TileManager.class),
+                getBean(ObjectTextureManager.class)
+            );
+            register(worldRenderer);
+            ServerConnectionService serverConnectionService = new ServerConnectionServiceImpl(fileAccessService);
 
 
             ChatServiceImpl chatService = new ChatServiceImpl(
@@ -344,10 +367,89 @@ public class AndroidGameContext {
             ApplicationEventPublisher eventPublisher = getBean(ApplicationEventPublisher.class);
             AndroidApplicationContext applicationContext = new AndroidApplicationContext(eventPublisher);
             register(ApplicationContext.class, applicationContext);
-
+            ItemTextureManager itemTextureManager = new ItemTextureManager();
+            register(ItemTextureManager.class, itemTextureManager);
 
             ScreenManagerImpl screenManager = new ScreenManagerImpl(applicationContext, getBean(GdxGame.class));
             register(screenManager);
+            ChunkLoaderService chunkLoaderService = new ChunkLoaderService(getBean(WorldService.class));
+            register(chunkLoaderService);
+            ChunkPreloaderService chunkPreloaderService = new ChunkPreloaderService(getBean(WorldService.class));
+            register(chunkPreloaderService);
+            ClientConnectionManager clientConnectionManager = new ClientConnectionManager();
+            register(clientConnectionManager);
+
+            HotbarUI hotbarUI = new HotbarUI(getBean(UiService.class), getBean(InventoryService.class), getBean(ItemTextureManager.class));
+            register(hotbarUI);
+            // Register all screens
+            ModeSelectionScreen modeSelectionScreen = new ModeSelectionScreen(
+                getBean(AudioService.class),
+                screenManager,
+                getBean(SettingsService.class),
+                getBean(BackgroundService.class)
+            );
+            modeSelectionScreen.setMultiplayerClient(getBean(MultiplayerClient.class));
+            modeSelectionScreen.setWorldService(getBean(WorldService.class));
+
+            register(ModeSelectionScreen.class, modeSelectionScreen);
+
+            InventoryScreen inventoryScreen = new InventoryScreen(
+                getBean(InventoryService.class),
+                getBean(UiService.class),
+                getBean(InputService.class)
+            );
+            register(InventoryScreen.class, inventoryScreen);
+            GameScreen gameScreen = new GameScreen(
+                getBean(PlayerService.class),
+                getBean(WorldService.class),
+                getBean(AudioService.class),
+                getBean(InputService.class),
+                screenManager,
+                getBean(ChatService.class),
+                getBean(BiomeService.class),
+                getBean(WorldRenderer.class),
+                getBean(ChunkLoaderService.class),
+                getBean(ChunkPreloaderService.class),
+                getBean(PlayerAnimationService.class),
+                getBean(MultiplayerClient.class),
+                getBean(ChunkLoadingManager.class)
+            );
+            gameScreen.setHotbarUI(getBean(HotbarUI.class));
+            gameScreen.setWorldService(getBean(WorldService.class));
+            gameScreen.setInventoryScreen(getBean(InventoryScreen.class));
+            gameScreen.setItemTextureManager(getBean(ItemTextureManager.class));
+            gameScreen.setConnectionManager(getBean(ClientConnectionManager.class));
+            register(GameScreen.class, gameScreen);
+
+            WorldSelectionScreen worldSelectionScreen = new WorldSelectionScreen(
+                getBean(AudioService.class),
+                getBean(WorldService.class),
+                screenManager
+            );
+            register(WorldSelectionScreen.class, worldSelectionScreen);
+
+            LoginScreen loginScreen = new LoginScreen(
+                getBean(AudioService.class),
+                getBean(ScreenManager.class),
+                serverConnectionService,
+                getBean(MultiplayerClient.class),
+                getBean(UiService.class)
+            );
+            register(LoginScreen.class, loginScreen);
+
+
+            SettingsScreen settingsScreen = new SettingsScreen(
+                screenManager,
+                getBean(SettingsService.class),
+                getBean(BackgroundService.class)
+            );
+            register(SettingsScreen.class, settingsScreen);
+
+            ServerDisconnectScreen serverDisconnectScreen = new ServerDisconnectScreen(
+                screenManager,
+                getBean(UiService.class)
+            );
+            register(ServerDisconnectScreen.class, serverDisconnectScreen);
 
             log.debug("All remaining services registered successfully");
 
@@ -356,6 +458,147 @@ public class AndroidGameContext {
             throw new RuntimeException("Service registration failed", e);
         }
     }
+
+    private static void registerBeans() {
+        log.debug("Starting bean registration");
+
+
+        GameConfig gameConfig = new GameConfig();
+        register(gameConfig);
+
+        WorldConfig worldConfig = new WorldConfig(System.currentTimeMillis());
+        register(worldConfig);
+
+        PlayerProperties playerProperties = new PlayerProperties();
+        register(playerProperties);
+
+        InputConfiguration inputConfig = new InputConfiguration();
+        register(inputConfig);
+
+
+        ApplicationEventPublisher eventPublisher = new AndroidEventPublisher();
+        register(ApplicationEventPublisher.class, eventPublisher);
+
+
+        FileAccessService fileAccessService = new LocalFileAccessService();
+        register(fileAccessService);
+
+        InputService inputService = new InputService(inputConfig);
+        register(inputService);
+
+        SettingsService settingsService = new SettingsService(inputConfig);
+        register(settingsService);
+
+        UiService uiService = new UiService();
+        register(uiService);
+
+
+        BiomeConfigurationLoader biomeLoader = new BiomeConfigurationLoader(fileAccessService);
+        register(biomeLoader);
+
+        BiomeServiceImpl biomeService = new BiomeServiceImpl(biomeLoader);
+        register(biomeService);
+
+        ObjectTextureManager objectTextureManager = new ObjectTextureManager();
+        register(objectTextureManager);
+
+        WorldObjectManagerImpl worldObjectManager = new WorldObjectManagerImpl();
+        register(worldObjectManager);
+
+        ClientTileManagerImpl tileManager = new ClientTileManagerImpl(fileAccessService);
+        register(tileManager);
+
+        CommandServiceImpl commandService = new CommandServiceImpl();
+        register(commandService);
+
+
+        MultiplayerClientImpl multiplayerClient = new MultiplayerClientImpl(eventPublisher);
+        register(multiplayerClient);
+
+
+        InventoryServiceImpl inventoryService = new InventoryServiceImpl();
+        register(inventoryService);
+
+
+        String worldsDir = System.getProperty("user.home", ".") + "/save/worlds";
+        JsonWorldDataService jsonWorldDataService = new JsonWorldDataService(worldsDir, false);
+        register(jsonWorldDataService);
+
+        WorldGeneratorImpl worldGenerator = new WorldGeneratorImpl(worldConfig);
+        register(worldGenerator);
+
+
+        ClientWorldServiceImpl worldService = new ClientWorldServiceImpl(
+            worldConfig, worldGenerator, worldObjectManager,
+            tileManager, biomeLoader, biomeService,
+            objectTextureManager, jsonWorldDataService, fileAccessService
+        );
+        register(worldService);
+
+        ChunkLoadingManager chunkLoadingManager = new ChunkLoadingManager();
+        register(chunkLoadingManager);
+
+
+        PlayerAnimationServiceImpl playerAnimationService = new PlayerAnimationServiceImpl();
+        register(playerAnimationService);
+
+        PlayerServiceImpl playerService = new PlayerServiceImpl(
+            playerAnimationService, inputService,
+            playerProperties, worldService, inventoryService
+        );
+        register(playerService);
+
+
+        AudioServiceImpl audioService = new AudioServiceImpl();
+        register(audioService);
+
+
+        ChatServiceImpl chatService = new ChatServiceImpl(
+            playerService, multiplayerClient, commandService
+        );
+        register(chatService);
+
+        GdxGame game = new GdxGame();
+        register(game);
+
+
+        ScreenManagerImpl screenManager = new ScreenManagerImpl(null, game);
+        register(screenManager);
+
+        log.debug("Bean registration completed successfully");
+    }
+
+    public static void dispose() {
+        if (fullyInitialized) {
+            try {
+                log.info("Disposing Android game context");
+
+
+                if (beans.containsKey(UiService.class)) {
+                    getBean(UiService.class).dispose();
+                }
+
+                if (beans.containsKey(ObjectTextureManager.class)) {
+                    getBean(ObjectTextureManager.class).disposeTextures();
+                }
+
+                if (beans.containsKey(AudioService.class)) {
+                    getBean(AudioService.class).dispose();
+                }
+
+                if (beans.containsKey(ChunkLoadingManager.class)) {
+                    getBean(ChunkLoadingManager.class).dispose();
+                }
+
+                beans.clear();
+                fullyInitialized = false;
+                log.info("Android game context disposed successfully");
+            } catch (Exception e) {
+                log.error("Error disposing Android game context", e);
+            }
+        }
+    }
+
     private static class AndroidApplicationContext implements ApplicationContext {
         private final ApplicationEventPublisher eventPublisher;
 
@@ -432,7 +675,7 @@ public class AndroidGameContext {
 
         @Override
         public <T> T getBean(Class<T> requiredType) {
-            throw new UnsupportedOperationException();
+            return AndroidGameContext.getBean(requiredType);
         }
 
         @Override
@@ -607,116 +850,6 @@ public class AndroidGameContext {
         }
     }
 
-    private static void registerBeans() {
-        log.debug("Starting bean registration");
-
-
-        GameConfig gameConfig = new GameConfig();
-        register(gameConfig);
-
-        WorldConfig worldConfig = new WorldConfig(System.currentTimeMillis());
-        register(worldConfig);
-
-        PlayerProperties playerProperties = new PlayerProperties();
-        register(playerProperties);
-
-        InputConfiguration inputConfig = new InputConfiguration();
-        register(inputConfig);
-
-
-        ApplicationEventPublisher eventPublisher = new AndroidEventPublisher();
-        register(ApplicationEventPublisher.class, eventPublisher);
-
-
-        FileAccessService fileAccessService = new LocalFileAccessService();
-        register(fileAccessService);
-
-        InputService inputService = new InputService(inputConfig);
-        register(inputService);
-
-        SettingsService settingsService = new SettingsService(inputConfig);
-        register(settingsService);
-
-        UiService uiService = new UiService();
-        register(uiService);
-
-
-        BiomeConfigurationLoader biomeLoader = new BiomeConfigurationLoader(fileAccessService);
-        register(biomeLoader);
-
-        BiomeServiceImpl biomeService = new BiomeServiceImpl(biomeLoader);
-        register(biomeService);
-
-        ObjectTextureManager objectTextureManager = new ObjectTextureManager();
-        register(objectTextureManager);
-
-        WorldObjectManagerImpl worldObjectManager = new WorldObjectManagerImpl();
-        register(worldObjectManager);
-
-        ClientTileManagerImpl tileManager = new ClientTileManagerImpl(fileAccessService);
-        register(tileManager);
-
-        CommandServiceImpl commandService = new CommandServiceImpl();
-        register(commandService);
-
-
-        MultiplayerClientImpl multiplayerClient = new MultiplayerClientImpl(eventPublisher);
-        register(multiplayerClient);
-
-
-        InventoryServiceImpl inventoryService = new InventoryServiceImpl();
-        register(inventoryService);
-
-
-        String worldsDir = System.getProperty("user.home", ".") + "/save/worlds";
-        JsonWorldDataService jsonWorldDataService = new JsonWorldDataService(worldsDir, false);
-        register(jsonWorldDataService);
-
-        WorldGeneratorImpl worldGenerator = new WorldGeneratorImpl(worldConfig);
-        register(worldGenerator);
-
-
-        ClientWorldServiceImpl worldService = new ClientWorldServiceImpl(
-            worldConfig, worldGenerator, worldObjectManager,
-            tileManager, biomeLoader, biomeService,
-            objectTextureManager, jsonWorldDataService,fileAccessService
-        );
-        register(worldService);
-
-        ChunkLoadingManager chunkLoadingManager = new ChunkLoadingManager();
-        register(chunkLoadingManager);
-
-
-        PlayerAnimationServiceImpl playerAnimationService = new PlayerAnimationServiceImpl();
-        register(playerAnimationService);
-
-        PlayerServiceImpl playerService = new PlayerServiceImpl(
-            playerAnimationService, inputService,
-            playerProperties, worldService, inventoryService
-        );
-        register(playerService);
-
-
-        AudioServiceImpl audioService = new AudioServiceImpl();
-        register(audioService);
-
-
-        ChatServiceImpl chatService = new ChatServiceImpl(
-            playerService, multiplayerClient, commandService
-        );
-        register(chatService);
-
-        GdxGame game = new GdxGame();
-        register(game);
-
-
-        ScreenManagerImpl screenManager = new ScreenManagerImpl(null, game);
-        register(screenManager);
-
-        log.debug("Bean registration completed successfully");
-    }
-
-
     private static class AndroidEventPublisher implements ApplicationEventPublisher {
         private final SimpleApplicationEventMulticaster eventMulticaster = new SimpleApplicationEventMulticaster();
 
@@ -731,36 +864,6 @@ public class AndroidGameContext {
                 publishEvent((ApplicationEvent) event);
             } else {
                 publishEvent(new PayloadApplicationEvent<>(this, event));
-            }
-        }
-    }
-    public static void dispose() {
-        if (fullyInitialized) {
-            try {
-                log.info("Disposing Android game context");
-
-
-                if (beans.containsKey(UiService.class)) {
-                    getBean(UiService.class).dispose();
-                }
-
-                if (beans.containsKey(ObjectTextureManager.class)) {
-                    getBean(ObjectTextureManager.class).disposeTextures();
-                }
-
-                if (beans.containsKey(AudioService.class)) {
-                    getBean(AudioService.class).dispose();
-                }
-
-                if (beans.containsKey(ChunkLoadingManager.class)) {
-                    getBean(ChunkLoadingManager.class).dispose();
-                }
-
-                beans.clear();
-                fullyInitialized = false;
-                log.info("Android game context disposed successfully");
-            } catch (Exception e) {
-                log.error("Error disposing Android game context", e);
             }
         }
     }

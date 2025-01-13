@@ -112,6 +112,7 @@ public class AndroidLauncher extends AndroidApplication {
             AndroidInitializer initializer = new AndroidInitializer(this);
             initializer.ensureDirectories();
             initializer.copyAssets();
+            initializer.validateGraphicsContext();
 
             // Set system properties
             File externalDir = getExternalFilesDir(null);
@@ -119,8 +120,20 @@ public class AndroidLauncher extends AndroidApplication {
             System.setProperty("spring.profiles.active", "android");
 
             // Load native libraries
-            System.loadLibrary("gdx");
-            System.loadLibrary("gdx-freetype");
+            try {
+                System.loadLibrary("gdx");
+                System.loadLibrary("gdx-freetype");
+                // Try to load MediaTek-specific library if available
+                try {
+                    System.loadLibrary("magtsync");
+                } catch (UnsatisfiedLinkError e) {
+                    // Ignore if not available - it's device-specific
+                    log.debug("MediaTek sync library not available - this is normal on most devices");
+                }
+            } catch (UnsatisfiedLinkError e) {
+                log.error("Failed to load required native libraries", e);
+                throw e;
+            }
 
             // Initialize LibGDX first
             AndroidApplicationConfiguration config = createConfig();

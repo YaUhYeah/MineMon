@@ -4,6 +4,7 @@ import com.badlogic.gdx.math.Vector2;
 import io.github.minemon.context.GameApplicationContext;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import lombok.Data;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -17,9 +18,9 @@ import java.util.concurrent.*;
 public class ChunkLoadingManager {
     private static final int MAX_CONCURRENT_REQUESTS = 12;
     private static final long REQUEST_TIMEOUT = 3000;
-    private static final int IMMEDIATE_RADIUS = 4;  
-    private static final int ACTIVE_RADIUS = 6;     
-    private static final int PRELOAD_RADIUS = 8;    
+    private static final int IMMEDIATE_RADIUS = 4;
+    private static final int ACTIVE_RADIUS = 6;
+    private static final int PRELOAD_RADIUS = 8;
     private static final int CHUNK_SIZE = 16;
     private static final int MAX_RETRIES = 3;
     private final PriorityBlockingQueue<ChunkRequest> requestQueue = new PriorityBlockingQueue<>();
@@ -32,9 +33,11 @@ public class ChunkLoadingManager {
     private Vector2 lastPlayerChunk = new Vector2(Integer.MAX_VALUE, Integer.MAX_VALUE);
     @Autowired
     @Lazy
+    @Setter
     private WorldService worldService;
     @Autowired
     @Lazy
+    @Setter
     private MultiplayerClient multiplayerClient;
 
     public ChunkLoadingManager() {
@@ -48,10 +51,10 @@ public class ChunkLoadingManager {
 
         long now = System.currentTimeMillis();
 
-        
+
         handleTimeouts(now);
 
-        
+
         processQueue();
     }
 
@@ -69,12 +72,12 @@ public class ChunkLoadingManager {
 
         Vector2 pos = new Vector2(x, y);
         if (worldService.isMultiplayerMode()) {
-            
+
             if (worldService.isChunkLoaded(pos) || activeRequests.containsKey(pos)) {
                 return;
             }
 
-            
+
             retryCount.remove(pos);
             failedChunks.remove(pos);
 
@@ -92,7 +95,7 @@ public class ChunkLoadingManager {
         activeRequests.remove(pos);
         failedChunks.remove(pos);
         retryCount.remove(pos);
-        processQueue(); 
+        processQueue();
     }
 
     private synchronized void processQueue() {
@@ -102,7 +105,7 @@ public class ChunkLoadingManager {
 
             Vector2 pos = new Vector2(request.x, request.y);
 
-            
+
             if (worldService.isChunkLoaded(pos)) continue;
 
             activeRequests.put(pos, new ChunkRequestInfo(
@@ -125,13 +128,13 @@ public class ChunkLoadingManager {
         }
         lastPlayerChunk.set(currentChunk);
 
-        
+
         int[][] priorities = calculatePriorities();
 
         synchronized (queueLock) {
-            requestQueue.clear(); 
+            requestQueue.clear();
 
-            
+
             for (int radius = 0; radius <= PRELOAD_RADIUS; radius++) {
                 for (int dx = -radius; dx <= radius; dx++) {
                     for (int dy = -radius; dy <= radius; dy++) {
@@ -155,11 +158,11 @@ public class ChunkLoadingManager {
                 int priority;
 
                 if (distance <= IMMEDIATE_RADIUS) {
-                    priority = 0;  
+                    priority = 0;
                 } else if (distance <= ACTIVE_RADIUS) {
-                    priority = 1;  
+                    priority = 1;
                 } else {
-                    priority = 2;  
+                    priority = 2;
                 }
 
                 priorities[dx + PRELOAD_RADIUS][dy + PRELOAD_RADIUS] = priority;
@@ -178,7 +181,7 @@ public class ChunkLoadingManager {
                 int currentRetries = retryCount.getOrDefault(pos, 0);
 
                 if (currentRetries < MAX_RETRIES) {
-                    
+
                     int newPriority = Math.max(0, info.getPriority() - 1);
                     retryCount.put(pos, currentRetries + 1);
 
@@ -199,7 +202,7 @@ public class ChunkLoadingManager {
             }
         });
 
-        
+
         timedOut.forEach(activeRequests::remove);
     }
 
@@ -250,15 +253,15 @@ public class ChunkLoadingManager {
 
         @Override
         public int compareTo(ChunkRequest o) {
-            
+
             int priorityCompare = Integer.compare(this.priority, o.priority);
             if (priorityCompare != 0) return priorityCompare;
 
-            
+
             int retryCompare = Integer.compare(o.retries, this.retries);
             if (retryCompare != 0) return retryCompare;
 
-            
+
             return Long.compare(this.timestamp, o.timestamp);
         }
     }
