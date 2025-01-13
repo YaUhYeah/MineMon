@@ -68,8 +68,6 @@ public class GameScreen implements Screen {
     private boolean handlingDisconnect = false;
     private OrthographicCamera camera;
     private SpriteBatch batch;
-    @Autowired
-    @Lazy
     @Setter
     private ClientConnectionManager connectionManager;
     private BitmapFont font;
@@ -84,8 +82,6 @@ public class GameScreen implements Screen {
     private Image pauseOverlay;
     private InputMultiplexer multiplexer;
     private boolean isActuallyMultiplayer = false;
-    @Autowired
-    @Lazy
     @Setter
     private ItemTextureManager itemTextureManager;
     private long lastChunkUpdate = 0;

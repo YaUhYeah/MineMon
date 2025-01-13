@@ -274,46 +274,67 @@ public class AndroidGameContext {
             // Core UI Services
             UiService uiService = new UiService();
             register(uiService);
+            register(UiService.class, uiService);
 
             BackgroundService backgroundService = new BackgroundService();
             register(backgroundService);
+            register(BackgroundService.class, backgroundService);
 
+            // Initialize texture managers
             ObjectTextureManager objectTextureManager = new ObjectTextureManager();
             register(objectTextureManager);
+            register(ObjectTextureManager.class, objectTextureManager);
 
+            ItemTextureManager itemTextureManager = new ItemTextureManager();
+            register(ItemTextureManager.class, itemTextureManager);
 
+            // Initialize biome services
             BiomeConfigurationLoader biomeLoader = new BiomeConfigurationLoader(getBean(FileAccessService.class));
             register(biomeLoader);
 
             BiomeServiceImpl biomeService = new BiomeServiceImpl(biomeLoader);
             register(biomeService);
+            register(BiomeService.class, biomeService);
 
+            // Initialize world object management
             WorldObjectManagerImpl worldObjectManager = new WorldObjectManagerImpl();
             register(worldObjectManager);
+            register(WorldObjectManager.class, worldObjectManager);
 
             ClientTileManagerImpl tileManager = new ClientTileManagerImpl(getBean(FileAccessService.class));
             register(tileManager);
+            register(TileManager.class, tileManager);
 
+            // Initialize command and chat services
             CommandServiceImpl commandService = new CommandServiceImpl();
             register(commandService);
 
-
-            MultiplayerClientImpl multiplayerClient = new MultiplayerClientImpl(getBean(ApplicationEventPublisher.class));
-            register(multiplayerClient);
-
-
+            // Initialize inventory system
             InventoryServiceImpl inventoryService = new InventoryServiceImpl();
             register(inventoryService);
+            register(InventoryService.class, inventoryService);
 
+            // Initialize multiplayer services
+            MultiplayerClientImpl multiplayerClient = new MultiplayerClientImpl(getBean(ApplicationEventPublisher.class));
+            register(multiplayerClient);
+            register(MultiplayerClient.class, multiplayerClient);
 
+            ClientConnectionManager connectionManager = new ClientConnectionManager();
+            register(connectionManager);
+            register(ClientConnectionManager.class, connectionManager);
+
+            // Initialize world data services
             String worldsDir = System.getProperty("user.home", ".") + "/save/worlds";
             JsonWorldDataService jsonWorldDataService = new JsonWorldDataService(worldsDir, false);
             register(jsonWorldDataService);
 
             WorldGeneratorImpl worldGenerator = new WorldGeneratorImpl(getBean(WorldConfig.class));
             register(worldGenerator);
+            register(WorldGenerator.class, worldGenerator);
+
             FileAccessService fileAccessService = new LocalFileAccessService();
 
+            // Initialize world service
             ClientWorldServiceImpl worldService = new ClientWorldServiceImpl(
                 getBean(WorldConfig.class),
                 worldGenerator,
@@ -322,23 +343,106 @@ public class AndroidGameContext {
                 biomeLoader,
                 biomeService,
                 objectTextureManager,
-                jsonWorldDataService, fileAccessService
+                jsonWorldDataService, 
+                fileAccessService
             );
             register(worldService);
+            register(WorldService.class, worldService);
 
+            // Initialize chunk management
+            ChunkLoadingManager chunkLoadingManager = new ChunkLoadingManager();
+            chunkLoadingManager.setWorldService(worldService);
+            chunkLoadingManager.setMultiplayerClient(multiplayerClient);
+            register(chunkLoadingManager);
+            register(ChunkLoadingManager.class, chunkLoadingManager);
 
+            ChunkLoaderService chunkLoaderService = new ChunkLoaderService(worldService);
+            register(chunkLoaderService);
+            register(ChunkLoaderService.class, chunkLoaderService);
 
+            ChunkPreloaderService chunkPreloaderService = new ChunkPreloaderService(worldService);
+            register(chunkPreloaderService);
+            register(ChunkPreloaderService.class, chunkPreloaderService);
+
+            // Initialize player animation
             PlayerAnimationServiceImpl playerAnimationService = new PlayerAnimationServiceImpl();
             register(playerAnimationService);
+            register(PlayerAnimationService.class, playerAnimationService);
 
+            // Initialize chat service
+            ChatServiceImpl chatService = new ChatServiceImpl(null, multiplayerClient, commandService);
+            register(chatService);
+            register(ChatService.class, chatService);
+
+            // Initialize screens
+            InventoryScreen inventoryScreen = new InventoryScreen(
+                inventoryService,
+                itemTextureManager,
+                uiService
+            );
+            register(InventoryScreen.class, inventoryScreen);
+
+            WorldSelectionScreen worldSelectionScreen = new WorldSelectionScreen(
+                worldService,
+                screenManager,
+                uiService,
+                backgroundService
+            );
+            register(WorldSelectionScreen.class, worldSelectionScreen);
+
+            ModeSelectionScreen modeSelectionScreen = new ModeSelectionScreen(
+                getBean(AudioService.class),
+                screenManager,
+                getBean(SettingsService.class),
+                backgroundService
+            );
+            modeSelectionScreen.setMultiplayerClient(multiplayerClient);
+            modeSelectionScreen.setWorldService(worldService);
+            register(ModeSelectionScreen.class, modeSelectionScreen);
+
+            // Initialize input service with all required dependencies
+            InputService inputService = getBean(InputService.class);
+            inputService.setChatService(chatService);
+            inputService.setInventoryScreen(inventoryScreen);
+            inputService.setMultiplayerClient(multiplayerClient);
+            inputService.setWorldService(worldService);
+            inputService.setPlayerService(null); // Will be set after PlayerService is created
+            inputService.setItemPickupHandler(null); // Will be set later
+
+            // Initialize player service
             PlayerServiceImpl playerService = new PlayerServiceImpl(
                 playerAnimationService,
-                getBean(InputService.class),
+                inputService,
                 getBean(PlayerProperties.class),
                 worldService,
                 inventoryService
             );
             register(playerService);
+            register(PlayerService.class, playerService);
+
+            // Set player service in input service now that it's created
+            inputService.setPlayerService(playerService);
+
+            // Initialize game screen
+            GameScreen gameScreen = new GameScreen(
+                playerService,
+                worldService,
+                getBean(AudioService.class),
+                inputService,
+                screenManager,
+                chatService,
+                biomeService,
+                worldRenderer,
+                chunkLoaderService,
+                chunkPreloaderService,
+                playerAnimationService,
+                multiplayerClient,
+                chunkLoadingManager
+            );
+            gameScreen.setInventoryScreen(inventoryScreen);
+            gameScreen.setConnectionManager(connectionManager);
+            gameScreen.setItemTextureManager(itemTextureManager);
+            register(GameScreen.class, gameScreen);
 
 
             ChunkLoadingManager chunkLoadingManager = new ChunkLoadingManager();

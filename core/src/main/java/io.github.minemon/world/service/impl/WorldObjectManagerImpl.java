@@ -28,12 +28,16 @@ public class WorldObjectManagerImpl implements WorldObjectManager {
     private static final float TREE_SPACING = 3.0f;
     private final boolean isServer;
     private final Map<String, List<WorldObject>> objectsByChunk = new ConcurrentHashMap<>();
-    @Autowired
-    @Lazy
     private ItemSpawnService itemSpawnService;
-    @Autowired
-    @Lazy
     private WorldService worldService;
+
+    public void setItemSpawnService(ItemSpawnService itemSpawnService) {
+        this.itemSpawnService = itemSpawnService;
+    }
+
+    public void setWorldService(WorldService worldService) {
+        this.worldService = worldService;
+    }
     @Getter
     @Setter
     private boolean singlePlayer = true;

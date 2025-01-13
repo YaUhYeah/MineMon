@@ -50,9 +50,11 @@ public class WorldSelectionScreen implements Screen {
     private TextButton playButton;
     private TextButton deleteButton;
     private float fontScale;
-    @Autowired
-    @Lazy
     private MultiplayerClient multiplayerClient;
+
+    public void setMultiplayerClient(MultiplayerClient multiplayerClient) {
+        this.multiplayerClient = multiplayerClient;
+    }
 
     @Autowired
     public WorldSelectionScreen(AudioService audioService,

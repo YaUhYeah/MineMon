@@ -26,9 +26,11 @@ public class JsonWorldDataService {
 
     private final boolean isServer;
     private final Json json;
-    @Autowired
-    @Lazy
     private WorldService worldService;
+
+    public void setWorldService(WorldService worldService) {
+        this.worldService = worldService;
+    }
 
     public JsonWorldDataService(String baseWorldsDir, boolean isServer) {
         // For Android, use the external files directory

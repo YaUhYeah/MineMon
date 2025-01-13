@@ -36,7 +36,6 @@ public class ModeSelectionScreen implements Screen {
     @Setter
     private MultiplayerClient multiplayerClient;
     @Autowired
-    @Lazy
     @Setter
     private WorldService worldService;
     private Stage stage;

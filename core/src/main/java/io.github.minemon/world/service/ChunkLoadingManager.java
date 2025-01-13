@@ -32,11 +32,9 @@ public class ChunkLoadingManager {
     private final Object queueLock = new Object();
     private Vector2 lastPlayerChunk = new Vector2(Integer.MAX_VALUE, Integer.MAX_VALUE);
     @Autowired
-    @Lazy
     @Setter
     private WorldService worldService;
     @Autowired
-    @Lazy
     @Setter
     private MultiplayerClient multiplayerClient;
 

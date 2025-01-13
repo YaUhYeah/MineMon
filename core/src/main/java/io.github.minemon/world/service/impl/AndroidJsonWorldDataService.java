@@ -25,9 +25,11 @@ import java.util.List;
 public class AndroidJsonWorldDataService extends JsonWorldDataService {
     private final Json json;
 
-    @Autowired
-    @Lazy
     private WorldService worldService;
+
+    public void setWorldService(WorldService worldService) {
+        this.worldService = worldService;
+    }
 
     public AndroidJsonWorldDataService() {
         super("", true); // Base path will be handled by LibGDX

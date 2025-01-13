@@ -74,21 +74,31 @@ public class MultiplayerClientImpl implements MultiplayerClient {
     private Runnable pendingCreateUserRequest = null;
     private Runnable pendingLoginRequest = null;
 
-    @Autowired
-    @Lazy
     private ScreenManager screenManager;
-    @Autowired
-    @Lazy
     private WorldService worldService;
-    @Autowired
-    @Lazy
     private ChatService chatService;
-    @Autowired
-    @Lazy
     private PlayerService playerService;
-    @Autowired
-    @Lazy
     private ChunkLoadingManager chunkLoadingManager;
+
+    public void setScreenManager(ScreenManager screenManager) {
+        this.screenManager = screenManager;
+    }
+
+    public void setWorldService(WorldService worldService) {
+        this.worldService = worldService;
+    }
+
+    public void setChatService(ChatService chatService) {
+        this.chatService = chatService;
+    }
+
+    public void setPlayerService(PlayerService playerService) {
+        this.playerService = playerService;
+    }
+
+    public void setChunkLoadingManager(ChunkLoadingManager chunkLoadingManager) {
+        this.chunkLoadingManager = chunkLoadingManager;
+    }
 
     @Autowired
     public MultiplayerClientImpl(ApplicationEventPublisher eventPublisher) {

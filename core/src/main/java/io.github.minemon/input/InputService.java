@@ -52,13 +52,36 @@ public class InputService extends InputAdapter {
         }
         lastPressedDirection = direction;
     }
-    @Autowired @Lazy private ItemPickupHandler itemPickupHandler;
+    private ItemPickupHandler itemPickupHandler;
+    private ChatService chatService;
+    private MultiplayerClient multiplayerClient;
+    private PlayerService playerService;
+    private InventoryScreen inventoryScreen;
+    private WorldService worldService;
 
-    @Autowired @Lazy private ChatService chatService;
-    @Autowired @Lazy private MultiplayerClient multiplayerClient;
-    @Autowired @Lazy private PlayerService playerService;
-    @Autowired @Lazy private InventoryScreen inventoryScreen;
-    @Autowired @Lazy private WorldService worldService;
+    public void setItemPickupHandler(ItemPickupHandler itemPickupHandler) {
+        this.itemPickupHandler = itemPickupHandler;
+    }
+
+    public void setChatService(ChatService chatService) {
+        this.chatService = chatService;
+    }
+
+    public void setMultiplayerClient(MultiplayerClient multiplayerClient) {
+        this.multiplayerClient = multiplayerClient;
+    }
+
+    public void setPlayerService(PlayerService playerService) {
+        this.playerService = playerService;
+    }
+
+    public void setInventoryScreen(InventoryScreen inventoryScreen) {
+        this.inventoryScreen = inventoryScreen;
+    }
+
+    public void setWorldService(WorldService worldService) {
+        this.worldService = worldService;
+    }
 
     public void activate() {
         isActive = true;
@@ -71,8 +94,7 @@ public class InputService extends InputAdapter {
     }
 
     public PlayerDirection getCurrentDirection() {
-
-        if (!isActive || inventoryScreen.isVisible()) {
+        if (!isActive || (inventoryScreen != null && inventoryScreen.isVisible())) {
             return null;
         }
 
@@ -92,8 +114,7 @@ public class InputService extends InputAdapter {
     }
 
     public boolean isRunning() {
-
-        return isActive && !inventoryScreen.isVisible() && runPressed;
+        return isActive && (inventoryScreen == null || !inventoryScreen.isVisible()) && runPressed;
     }
 
     public void resetKeys() {
@@ -106,7 +127,7 @@ public class InputService extends InputAdapter {
     }
     @Override
     public boolean keyDown(int keycode) {
-        if (!isActive || chatService.isActive()) {
+        if (!isActive || (chatService != null && chatService.isActive())) {
             return false;
         }
         if (keycode == inputConfig.getActionKey("PICKUP")) {
@@ -150,6 +171,10 @@ public class InputService extends InputAdapter {
     }
 
     private void attemptPickup() {
+        if (playerService == null || worldService == null || itemPickupHandler == null) {
+            return;
+        }
+
         PlayerData pd = playerService.getPlayerData();
         if (pd == null) return;
 
@@ -194,12 +219,14 @@ public class InputService extends InputAdapter {
 
 
         if (!upPressed && !downPressed && !leftPressed && !rightPressed) {
-            PlayerData pd = playerService.getPlayerData();
-            if (pd != null) {
-                float x = pd.getX();
-                float y = pd.getY();
-                String dirName = pd.getDirection().name().toLowerCase();
-                multiplayerClient.sendPlayerMove(x, y, false, false, dirName);
+            if (playerService != null && multiplayerClient != null) {
+                PlayerData pd = playerService.getPlayerData();
+                if (pd != null) {
+                    float x = pd.getX();
+                    float y = pd.getY();
+                    String dirName = pd.getDirection().name().toLowerCase();
+                    multiplayerClient.sendPlayerMove(x, y, false, false, dirName);
+                }
             }
         }
 
