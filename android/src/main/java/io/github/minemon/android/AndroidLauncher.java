@@ -14,6 +14,7 @@ import com.badlogic.gdx.backends.android.AndroidApplication;
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration;
 import com.badlogic.gdx.backends.android.AndroidGraphics;
 import io.github.minemon.GdxGame;
+import io.github.minemon.context.AndroidGameContext;
 import io.github.minemon.context.GameApplicationContext;
 import io.github.minemon.core.ui.AndroidUIFactory;
 import io.github.minemon.input.AndroidTouchInput;
@@ -82,166 +83,65 @@ public class AndroidLauncher extends AndroidApplication {
     }
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Enable hardware acceleration
-        getWindow().setFlags(
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-        );
-        // Initialize logging first
-        try {
-            AndroidLoggerFactory.init();
-            log.info("Logging initialized");
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.err.println("Failed to initialize logging: " + e.getMessage());
-        }
-
-        // Set global exception handler
-        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
-            // Get root cause
-            Throwable rootCause = throwable;
-            while (rootCause.getCause() != null) {
-                rootCause = rootCause.getCause();
-            }
-
-            // Log only the essential information
-            log.error("[{}] {}: {}",
-                thread.getName(),
-                rootCause.getClass().getSimpleName(),
-                rootCause.getMessage());
-
-            finish();
-        });
-
         super.onCreate(savedInstanceState);
 
         try {
+            // Initialize logging first
+            AndroidLoggerFactory.init();
             log.info("Starting AndroidLauncher onCreate");
 
-            // Request permissions first and wait for them to be granted
-            requestPermissions();
+            // Enable hardware acceleration
+            getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+            );
 
-            // Wait for permissions to be granted (with timeout)
-            int attempts = 0;
-            while (!hasStoragePermissions() && attempts < 10) {
-                try {
-                    Thread.sleep(1000);
-                    attempts++;
-                    log.info("Waiting for storage permissions, attempt {}/10", attempts);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-
-            if (!hasStoragePermissions()) {
-                String msg = "Storage permissions not granted after timeout";
-                log.error(msg);
-                throw new RuntimeException(msg);
-            }
-
-            // Ensure external storage is available and writable
-            File externalDir = getExternalFilesDir(null);
-            if (externalDir == null) {
-                String msg = "External storage not available";
-                log.error(msg);
-                throw new RuntimeException(msg);
-            }
-
-            // Test write access with retries
-            boolean writeSuccess = false;
-            IOException lastException = null;
-            for (int i = 0; i < 3; i++) {
-                File testFile = new File(externalDir, "test.tmp");
-                try {
-                    if (testFile.createNewFile()) {
-                        testFile.delete();
-                        writeSuccess = true;
-                        log.info("External storage is writable");
-                        break;
-                    }
-                } catch (IOException e) {
-                    lastException = e;
-                    log.warn("Write test attempt {} failed: {}", i + 1, e.getMessage());
-                    try {
-                        Thread.sleep(100); // Short delay before retry
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-            }
-
-            if (!writeSuccess) {
-                String msg = "Cannot write to external storage after retries";
-                log.error(msg, lastException);
-                throw new RuntimeException(msg, lastException);
-            }
-
+            // Setup window flags
             requestWindowFeature(Window.FEATURE_NO_TITLE);
             getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
 
+            // Request and verify permissions
+            requestPermissions();
+            if (!waitForPermissions()) {
+                throw new RuntimeException("Required permissions not granted");
+            }
 
-            // Initialize Android file system and copy assets first
+            // Initialize file system
             AndroidInitializer initializer = new AndroidInitializer(this);
             initializer.ensureDirectories();
-            initializer.copyAssets();  // Always copy assets to ensure they're up to date
+            initializer.copyAssets();
 
-            // Set Android profile
+            // Set system properties
+            File externalDir = getExternalFilesDir(null);
+            System.setProperty("user.home", externalDir.getAbsolutePath());
             System.setProperty("spring.profiles.active", "android");
-            
+
             // Load native libraries
-            try {
-                System.loadLibrary("gdx");
-                System.loadLibrary("gdx-freetype");
-            } catch (UnsatisfiedLinkError e) {
-                log.error("Failed to load native libraries", e);
-                throw new RuntimeException("Failed to load native libraries", e);
-            }
+            System.loadLibrary("gdx");
+            System.loadLibrary("gdx-freetype");
 
-            // Initialize Android context first
-            try {
-                AndroidGameContext.initMinimal();
-                AndroidGameContext.initServices();
-                log.info("Android context initialized successfully");
-            } catch (Exception e) {
-                log.error("Failed to initialize Android game context", e);
-                throw new RuntimeException("Failed to initialize Android game context", e);
-            }
-
-            // Initialize LibGDX with the game instance
+            // Initialize LibGDX first
             AndroidApplicationConfiguration config = createConfig();
             GdxGame game = new GdxGame();
-            
-            // Register the game instance in the context
-            AndroidGameContext.register(GdxGame.class, game);
-            log.info("Registered GdxGame instance in AndroidGameContext");
-
-            // Initialize LibGDX
             initialize(game, config);
 
-            // Setup Android input
+            // Wait briefly for LibGDX to initialize
+            Thread.sleep(500);
+
+            // Now initialize game context
+            AndroidGameContext.register(GdxGame.class, game);
+            AndroidGameContext.initMinimal();
+            AndroidGameContext.initServices();
+
+            // Setup input after context is ready
             InputService inputService = AndroidGameContext.getBean(InputService.class);
             inputService.setAndroidMode(true);
 
-            // Initialize Android touch input
-            try {
-                AndroidTouchInput touchInput = AndroidGameContext.getBean(AndroidTouchInput.class);
-                touchInput.initialize(AndroidUIFactory.createTouchpadStyle());
-            } catch (Exception e) {
-                log.warn("Failed to initialize touch input early", e);
-                // Not critical, will try again in GdxGame
-            }
+            // Initialize touch input last
+            initializeTouchInput();
 
-            // Set system properties for file paths
-            System.setProperty("user.home", externalDir.getAbsolutePath());
-
-            // Initialize game
-            initialize(game, config);
-
-            // Graphics context will be initialized in the create() method
             log.info("AndroidLauncher initialized successfully");
 
         } catch (Exception e) {
@@ -250,6 +150,28 @@ public class AndroidLauncher extends AndroidApplication {
         }
     }
 
+    private boolean waitForPermissions() {
+        int attempts = 0;
+        while (!hasStoragePermissions() && attempts < 10) {
+            try {
+                Thread.sleep(500);
+                attempts++;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return hasStoragePermissions();
+    }
+
+    private void initializeTouchInput() {
+        try {
+            AndroidTouchInput touchInput = AndroidGameContext.getBean(AndroidTouchInput.class);
+            touchInput.initialize(AndroidUIFactory.createTouchpadStyle());
+        } catch (Exception e) {
+            log.warn("Touch input initialization deferred", e);
+        }
+    }
     @Override
     protected void onResume() {
         super.onResume();

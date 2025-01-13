@@ -63,22 +63,23 @@ public class AndroidGameContext {
             try {
                 log.info("Initializing minimal Android game context");
 
-                // Wait for Gdx.app to be available (with timeout)
+                // Ensure LibGDX is properly initialized
+                if (Gdx.app == null) {
+                    log.error("LibGDX application must be initialized before calling initMinimal");
+                    throw new IllegalStateException("Call initialize() on AndroidApplication first");
+                }
+
+                // Wait for GL context with a shorter timeout
                 int attempts = 0;
-                while (Gdx.app == null && attempts < 10) {
+                while (Gdx.graphics.getGL20() == null && attempts < 5) {
                     try {
-                        Thread.sleep(100);
+                        Thread.sleep(200);
                         attempts++;
-                        log.debug("Waiting for LibGDX initialization, attempt {}/10", attempts);
+                        log.debug("Waiting for GL context, attempt {}/5", attempts);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         break;
                     }
-                }
-
-                if (Gdx.app == null) {
-                    log.error("LibGDX application not initialized after {} attempts", attempts);
-                    throw new IllegalStateException("LibGDX application not initialized");
                 }
 
                 // Register core beans in a safe order
