@@ -31,6 +31,7 @@ import io.github.minemon.world.service.ChunkLoaderService;
 import io.github.minemon.world.service.ChunkLoadingManager;
 import io.github.minemon.world.service.ChunkPreloaderService;
 import io.github.minemon.world.service.WorldService;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
@@ -39,6 +40,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
 @Component
 @Scope("prototype")
 @Slf4j
@@ -47,7 +49,8 @@ public class GameScreen implements Screen {
     private final float TARGET_VIEWPORT_WIDTH_TILES = 24f;
     private final int TILE_SIZE = 32;
     private final PlayerService playerService;
-    private final WorldService worldService;
+    @Setter
+    private WorldService worldService;
     private final AudioService audioService;
     private final InputService inputService;
     private final ChatService chatService;
@@ -58,13 +61,16 @@ public class GameScreen implements Screen {
     private final MultiplayerClient multiplayerClient;
     private final PlayerAnimationService animationService;
     private final Map<String, RemotePlayerAnimator> remotePlayerAnimators = new ConcurrentHashMap<>();
+    private final ChunkLoadingManager chunkLoadingManager;
     @Autowired
+    @Setter
     private InventoryScreen inventoryScreen;
     private boolean handlingDisconnect = false;
     private OrthographicCamera camera;
     private SpriteBatch batch;
     @Autowired
     @Lazy
+    @Setter
     private ClientConnectionManager connectionManager;
     private BitmapFont font;
     private Stage pauseStage;
@@ -80,10 +86,11 @@ public class GameScreen implements Screen {
     private boolean isActuallyMultiplayer = false;
     @Autowired
     @Lazy
+    @Setter
     private ItemTextureManager itemTextureManager;
-    private final ChunkLoadingManager chunkLoadingManager;
     private long lastChunkUpdate = 0;
     @Autowired
+    @Setter
     private HotbarUI hotbarUI;
 
     @Autowired
@@ -132,9 +139,11 @@ public class GameScreen implements Screen {
             screenManager.showScreen(ServerDisconnectScreen.class);
         }
     }
+
     private boolean worldRendererIsInitialized() {
         return worldRenderer != null && worldRenderer.isInitialized();
     }
+
     @Override
     public void show() {
         try {
@@ -218,6 +227,7 @@ public class GameScreen implements Screen {
         audioService.playMenuMusic();
         initializePlayerPosition();
     }
+
     private void initializeUI() {
         pauseStage = new Stage(new ScreenViewport());
         pauseSkin = new Skin(Gdx.files.internal("Skins/uiskin.json"));
@@ -555,7 +565,6 @@ public class GameScreen implements Screen {
         inventoryScreen.render(delta);
 
 
-
         if (paused) {
             pauseStage.draw();
         }
@@ -698,6 +707,7 @@ public class GameScreen implements Screen {
 
         handlingDisconnect = false;
     }
+
     private void goBackToMenu() {
 
         inputService.deactivate();
