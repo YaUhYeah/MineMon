@@ -124,8 +124,14 @@ public class AndroidInitializer {
                 return;
             }
 
-            // Copy biomes.json
+            // Create config directory
             File configDir = new File(externalDir, "config");
+            if (!configDir.exists() && !configDir.mkdirs()) {
+                log.error("Failed to create config directory");
+                throw new RuntimeException("Failed to create config directory");
+            }
+
+            // Copy biomes.json
             File biomesFile = new File(configDir, "biomes.json");
             if (!biomesFile.exists()) {
                 try {
