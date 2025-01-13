@@ -377,6 +377,7 @@ public class AndroidGameContext {
                 getBean(SettingsService.class),
                 getBean(BackgroundService.class)
             );
+            modeSelectionScreen.setMultiplayerClient(getBean(MultiplayerClient.class));
             register(ModeSelectionScreen.class, modeSelectionScreen);
 
             GameScreen gameScreen = new GameScreen(
