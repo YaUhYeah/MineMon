@@ -389,10 +389,15 @@ public class AndroidGameContext {
                 getBean(InputService.class),
                 screenManager,
                 getBean(ChatService.class),
-                getBean(BiomeService.class), worldRenderer, chunkLoaderService, chunkPreloaderService,
+                getBean(BiomeService.class),
+                getBean(WorldRenderer.class),
+                getBean(ChunkLoaderService.class),
+                getBean(ChunkPreloaderService.class),
                 getBean(PlayerAnimationService.class),
-                multiplayerClient,
-                getBean(ChunkLoadingManager.class));
+                getBean(MultiplayerClient.class),
+                getBean(ChunkLoadingManager.class)
+            );
+            gameScreen.setHotbarUI(getBean(HotbarUI.class));
             register(GameScreen.class, gameScreen);
 
             WorldSelectionScreen worldSelectionScreen = new WorldSelectionScreen(
