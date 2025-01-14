@@ -6,11 +6,7 @@ import io.github.minemon.audio.service.impl.AudioServiceImpl;
 import io.github.minemon.chat.service.ChatService;
 import io.github.minemon.chat.service.impl.ChatServiceImpl;
 import io.github.minemon.chat.service.impl.CommandServiceImpl;
-import io.github.minemon.core.screen.GameScreen;
-import io.github.minemon.core.screen.InventoryScreen;
-import io.github.minemon.core.screen.LoginScreen;
-import io.github.minemon.core.screen.ModeSelectionScreen;
-import io.github.minemon.core.screen.WorldSelectionScreen;
+import io.github.minemon.core.screen.*;
 import io.github.minemon.core.service.*;
 import io.github.minemon.core.service.impl.LocalFileAccessService;
 import io.github.minemon.core.service.impl.ScreenManagerImpl;
@@ -35,7 +31,6 @@ import io.github.minemon.world.biome.config.BiomeConfigurationLoader;
 import io.github.minemon.world.biome.service.BiomeService;
 import io.github.minemon.world.biome.service.impl.BiomeServiceImpl;
 import io.github.minemon.world.config.WorldConfig;
-import io.github.minemon.world.model.ObjectRenderState;
 import io.github.minemon.world.model.WorldRenderer;
 import io.github.minemon.world.service.*;
 import io.github.minemon.world.service.impl.*;
@@ -45,7 +40,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class DesktopConfig extends BaseGameConfig {
+public abstract class BaseGameConfig {
 
     @Bean
     public FileAccessService fileAccessService() {
@@ -145,11 +140,6 @@ public class DesktopConfig extends BaseGameConfig {
     }
 
     @Bean
-    public ObjectRenderState objectRenderState() {
-        return new ObjectRenderState();
-    }
-
-    @Bean
     public WorldRenderer worldRenderer(WorldService worldService, TileManager tileManager,
                                      ObjectTextureManager objectTextureManager) {
         return new WorldRenderer(worldService, tileManager, objectTextureManager);
@@ -158,28 +148,6 @@ public class DesktopConfig extends BaseGameConfig {
     @Bean
     public ChunkLoadingManager chunkLoadingManager() {
         return new ChunkLoadingManager();
-    }
-
-    @Bean
-    public ItemPickupHandler itemPickupHandler() {
-        return new ItemPickupHandler();
-    }
-
-    @Bean
-    public InputService inputService(InputConfiguration inputConfiguration,
-                                   ItemPickupHandler itemPickupHandler,
-                                   ChatService chatService,
-                                   MultiplayerClient multiplayerClient,
-                                   PlayerService playerService,
-                                   InventoryScreen inventoryScreen,
-                                   WorldService worldService) {
-        return new InputService(inputConfiguration, itemPickupHandler, chatService,
-                multiplayerClient, playerService, inventoryScreen, worldService);
-    }
-
-    @Bean
-    public PlayerAnimationService playerAnimationService() {
-        return new PlayerAnimationServiceImpl();
     }
 
     @Bean
@@ -193,10 +161,8 @@ public class DesktopConfig extends BaseGameConfig {
     }
 
     @Bean
-    public HotbarUI hotbarUI(UiService uiService,
-                            InventoryService inventoryService,
-                            ItemTextureManager itemTextureManager) {
-        return new HotbarUI(uiService, inventoryService, itemTextureManager);
+    public PlayerAnimationService playerAnimationService() {
+        return new PlayerAnimationServiceImpl();
     }
 
     @Bean
@@ -215,11 +181,6 @@ public class DesktopConfig extends BaseGameConfig {
     @Bean
     public ScreenManager screenManager(GdxGame gdxGame, ApplicationContext applicationContext) {
         return new ScreenManagerImpl(applicationContext, gdxGame);
-    }
-
-    @Bean
-    public ClientConnectionManager clientConnectionManager() {
-        return new ClientConnectionManager();
     }
 
     @Bean
@@ -255,6 +216,25 @@ public class DesktopConfig extends BaseGameConfig {
     }
 
     @Bean
+    public ClientConnectionManager clientConnectionManager() {
+        return new ClientConnectionManager();
+    }
+
+    @Bean
+    public HotbarUI hotbarUI(UiService uiService,
+                            InventoryService inventoryService,
+                            ItemTextureManager itemTextureManager) {
+        return new HotbarUI(uiService, inventoryService, itemTextureManager);
+    }
+
+    @Bean
+    public InventoryScreen inventoryScreen(InventoryService inventoryService,
+                                         UiService uiService,
+                                         InputService inputService) {
+        return new InventoryScreen(inventoryService, uiService, inputService);
+    }
+
+    @Bean
     public ModeSelectionScreen modeSelectionScreen(AudioService audioService,
                                                  ScreenManager screenManager,
                                                  SettingsService settingsService,
@@ -273,13 +253,6 @@ public class DesktopConfig extends BaseGameConfig {
                                                    WorldService worldService,
                                                    ScreenManager screenManager) {
         return new WorldSelectionScreen(audioService, worldService, screenManager);
-    }
-
-    @Bean
-    public InventoryScreen inventoryScreen(InventoryService inventoryService,
-                                         UiService uiService,
-                                         InputService inputService) {
-        return new InventoryScreen(inventoryService, uiService, inputService);
     }
 
     @Bean

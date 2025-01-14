@@ -49,12 +49,12 @@ public class InputService extends InputAdapter {
         }
         lastPressedDirection = direction;
     }
-    private ItemPickupHandler itemPickupHandler;
-    private ChatService chatService;
-    private MultiplayerClient multiplayerClient;
-    private PlayerService playerService;
-    private InventoryScreen inventoryScreen;
-    private WorldService worldService;
+    private final ItemPickupHandler itemPickupHandler;
+    private final ChatService chatService;
+    private final MultiplayerClient multiplayerClient;
+    private final PlayerService playerService;
+    private final InventoryScreen inventoryScreen;
+    private final WorldService worldService;
 
 
     public void activate() {

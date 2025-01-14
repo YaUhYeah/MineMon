@@ -240,6 +240,32 @@ public class GameApplicationContext {
         }
     }
 
+    private static void initHtmlContext() {
+        try {
+            AnnotationConfigApplicationContext htmlCtx = new AnnotationConfigApplicationContext();
+            htmlCtx.register(io.github.minemon.core.config.DesktopConfig.class); // Use desktop config for now
+            htmlCtx.refresh();
+            context = htmlCtx;
+            log.info("HTML context initialized successfully");
+        } catch (Exception e) {
+            log.error("Failed to initialize HTML context", e);
+            throw new RuntimeException("Failed to initialize HTML context", e);
+        }
+    }
+
+    private static void initIosContext() {
+        try {
+            AnnotationConfigApplicationContext iosCtx = new AnnotationConfigApplicationContext();
+            iosCtx.register(io.github.minemon.core.config.AndroidConfig.class); // Use Android config for iOS
+            iosCtx.refresh();
+            context = iosCtx;
+            log.info("iOS context initialized successfully");
+        } catch (Exception e) {
+            log.error("Failed to initialize iOS context", e);
+            throw new RuntimeException("Failed to initialize iOS context", e);
+        }
+    }
+
     public static ApplicationContext getContext() {
         if (!initialized) {
             throw new IllegalStateException("Context not initialized. Call initContext() first");
