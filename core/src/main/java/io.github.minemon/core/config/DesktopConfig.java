@@ -287,10 +287,11 @@ public class DesktopConfig {
                                ChunkPreloaderService chunkPreloaderService,
                                PlayerAnimationService playerAnimationService,
                                MultiplayerClient multiplayerClient,
-                               ChunkLoadingManager chunkLoadingManager) {
+                               ChunkLoadingManager chunkLoadingManager,
+                               ItemTextureManager itemTextureManager) {
         return new GameScreen(playerService, worldService, audioService, inputService,
                 screenManager, chatService, biomeService, worldRenderer, chunkLoaderService,
                 chunkPreloaderService, playerAnimationService, multiplayerClient,
-                chunkLoadingManager);
+                chunkLoadingManager, itemTextureManager);
     }
 }
