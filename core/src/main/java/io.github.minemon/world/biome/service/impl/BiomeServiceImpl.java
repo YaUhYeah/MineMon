@@ -43,14 +43,36 @@ public class BiomeServiceImpl implements BiomeService {
     }
 
 
-    @PostConstruct
+    private volatile boolean initialized = false;
+
     @Override
     public void init() {
-        this.biomes = configurationLoader.loadBiomes("config/biomes.json");
-        if (biomes.isEmpty()) {
-            log.warn("No biomes loaded - using defaults.");
-        } else {
-            log.info("Loaded {} biomes.", biomes.size());
+        if (initialized) {
+            return;
+        }
+        synchronized (this) {
+            if (!initialized) {
+                try {
+                    this.biomes = configurationLoader.loadBiomes("config/biomes.json");
+                    if (biomes.isEmpty()) {
+                        log.warn("No biomes loaded - using defaults.");
+                        // Add default biomes
+                        biomes.put(BiomeType.PLAINS, new Biome("Plains", BiomeType.PLAINS, null, null, null, null));
+                        biomes.put(BiomeType.DESERT, new Biome("Desert", BiomeType.DESERT, null, null, null, null));
+                        biomes.put(BiomeType.FOREST, new Biome("Forest", BiomeType.FOREST, null, null, null, null));
+                    } else {
+                        log.info("Loaded {} biomes.", biomes.size());
+                    }
+                    initialized = true;
+                } catch (Exception e) {
+                    log.error("Failed to initialize biomes: {}", e.getMessage());
+                    // Add default biomes as fallback
+                    biomes.put(BiomeType.PLAINS, new Biome("Plains", BiomeType.PLAINS, null, null, null, null));
+                    biomes.put(BiomeType.DESERT, new Biome("Desert", BiomeType.DESERT, null, null, null, null));
+                    biomes.put(BiomeType.FOREST, new Biome("Forest", BiomeType.FOREST, null, null, null, null));
+                    initialized = true;
+                }
+            }
         }
     }
 

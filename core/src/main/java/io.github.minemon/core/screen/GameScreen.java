@@ -99,8 +99,11 @@ public class GameScreen implements Screen {
                       BiomeService biomeService,
                       WorldRenderer worldRenderer,
                       ChunkLoaderService chunkLoaderService,
-                      ChunkPreloaderService chunkPreloaderService, PlayerAnimationService animationService, MultiplayerClient client,
-                      ChunkLoadingManager chunkLoadingManager) {
+                      ChunkPreloaderService chunkPreloaderService,
+                      PlayerAnimationService animationService,
+                      MultiplayerClient client,
+                      ChunkLoadingManager chunkLoadingManager,
+                      ItemTextureManager itemTextureManager) {
         this.playerService = playerService;
         this.worldService = worldService;
         this.audioService = audioService;
@@ -113,6 +116,7 @@ public class GameScreen implements Screen {
         this.chunkLoaderService = chunkLoaderService;
         this.multiplayerClient = client;
         this.chunkLoadingManager = chunkLoadingManager;
+        this.itemTextureManager = itemTextureManager;
     }
 
     private void handleDisconnection() {

@@ -19,6 +19,7 @@ import io.github.minemon.input.AndroidTouchInput;
 import io.github.minemon.input.InputConfiguration;
 import io.github.minemon.input.InputService;
 import io.github.minemon.inventory.service.impl.InventoryServiceImpl;
+import io.github.minemon.inventory.service.impl.ItemTextureManager;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.multiplayer.service.ServerConnectionService;
 import io.github.minemon.multiplayer.service.impl.MultiplayerClientImpl;
@@ -182,6 +183,8 @@ public class GameApplicationContext {
             bf.getBean("multiplayerClient", MultiplayerClientImpl.class),
             bf.getBean("commandService", CommandServiceImpl.class)
         ));
+        ItemTextureManager itemTextureManager = new ItemTextureManager();
+        bf.registerSingleton("itemTextureManager", itemTextureManager);
 
 
         ModeSelectionScreen modeSelectionScreen = new ModeSelectionScreen(
@@ -222,18 +225,49 @@ public class GameApplicationContext {
             bf.getBean(ChunkPreloaderService.class),
             bf.getBean(PlayerAnimationService.class),
             bf.getBean(MultiplayerClient.class),
-            bf.getBean(ChunkLoadingManager.class)
+            bf.getBean(ChunkLoadingManager.class),
+            bf.getBean(ItemTextureManager.class)
         );
         bf.registerSingleton("gameScreen", gameScreen);
     }
 
     private static void initDesktopContext() {
+        try {
+            AnnotationConfigApplicationContext desktopCtx = new AnnotationConfigApplicationContext();
+            desktopCtx.register(io.github.minemon.core.config.DesktopConfig.class);
+            desktopCtx.refresh();
+            context = desktopCtx;
+            log.info("Desktop context initialized successfully");
+        } catch (Exception e) {
+            log.error("Failed to initialize desktop context", e);
+            throw new RuntimeException("Failed to initialize desktop context", e);
+        }
+    }
 
-        AnnotationConfigApplicationContext desktopCtx = new AnnotationConfigApplicationContext();
-        desktopCtx.scan("io.github.minemon");
-        desktopCtx.refresh();
-        context = desktopCtx;
-        log.info("Desktop context initialized with component scanning");
+    private static void initHtmlContext() {
+        try {
+            AnnotationConfigApplicationContext htmlCtx = new AnnotationConfigApplicationContext();
+            htmlCtx.register(io.github.minemon.core.config.DesktopConfig.class); // Use desktop config for now
+            htmlCtx.refresh();
+            context = htmlCtx;
+            log.info("HTML context initialized successfully");
+        } catch (Exception e) {
+            log.error("Failed to initialize HTML context", e);
+            throw new RuntimeException("Failed to initialize HTML context", e);
+        }
+    }
+
+    private static void initIosContext() {
+        try {
+            AnnotationConfigApplicationContext iosCtx = new AnnotationConfigApplicationContext();
+            iosCtx.register(io.github.minemon.core.config.AndroidConfig.class); // Use Android config for iOS
+            iosCtx.refresh();
+            context = iosCtx;
+            log.info("iOS context initialized successfully");
+        } catch (Exception e) {
+            log.error("Failed to initialize iOS context", e);
+            throw new RuntimeException("Failed to initialize iOS context", e);
+        }
     }
 
     public static ApplicationContext getContext() {

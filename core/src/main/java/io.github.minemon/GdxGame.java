@@ -112,9 +112,21 @@ public class GdxGame extends Game {
             context.getBean(ObjectTextureManager.class).initializeIfNeeded();
 
             log.info("Initializing game services...");
-            context.getBean(PlayerAnimationService.class).initAnimationsIfNeeded();
-            context.getBean(AudioService.class).initAudio();
-            context.getBean(BiomeService.class).init();
+            try {
+                context.getBean(PlayerAnimationService.class).initAnimationsIfNeeded();
+            } catch (Exception e) {
+                log.error("Failed to initialize player animations", e);
+            }
+            try {
+                context.getBean(AudioService.class).initAudio();
+            } catch (Exception e) {
+                log.error("Failed to initialize audio", e);
+            }
+            try {
+                context.getBean(BiomeService.class).init();
+            } catch (Exception e) {
+                log.error("Failed to initialize biomes", e);
+            }
 
 
             log.info("Showing initial screen...");

@@ -458,12 +458,12 @@ public class AndroidGameContext {
                 getBean(ChunkPreloaderService.class),
                 getBean(PlayerAnimationService.class),
                 getBean(MultiplayerClient.class),
-                getBean(ChunkLoadingManager.class)
+                getBean(ChunkLoadingManager.class),
+                getBean(ItemTextureManager.class)
             );
             gameScreen.setHotbarUI(getBean(HotbarUI.class));
             gameScreen.setWorldService(getBean(WorldService.class));
             gameScreen.setInventoryScreen(getBean(InventoryScreen.class));
-            gameScreen.setItemTextureManager(getBean(ItemTextureManager.class));
             gameScreen.setConnectionManager(getBean(ClientConnectionManager.class));
             register(GameScreen.class, gameScreen);
 
