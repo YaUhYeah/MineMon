@@ -19,6 +19,7 @@ import io.github.minemon.input.AndroidTouchInput;
 import io.github.minemon.input.InputConfiguration;
 import io.github.minemon.input.InputService;
 import io.github.minemon.inventory.service.impl.InventoryServiceImpl;
+import io.github.minemon.inventory.service.impl.ItemTextureManager;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.multiplayer.service.ServerConnectionService;
 import io.github.minemon.multiplayer.service.impl.MultiplayerClientImpl;
@@ -182,6 +183,8 @@ public class GameApplicationContext {
             bf.getBean("multiplayerClient", MultiplayerClientImpl.class),
             bf.getBean("commandService", CommandServiceImpl.class)
         ));
+        ItemTextureManager itemTextureManager = new ItemTextureManager();
+        bf.registerSingleton("itemTextureManager", itemTextureManager);
 
 
         ModeSelectionScreen modeSelectionScreen = new ModeSelectionScreen(
@@ -222,7 +225,8 @@ public class GameApplicationContext {
             bf.getBean(ChunkPreloaderService.class),
             bf.getBean(PlayerAnimationService.class),
             bf.getBean(MultiplayerClient.class),
-            bf.getBean(ChunkLoadingManager.class)
+            bf.getBean(ChunkLoadingManager.class),
+            bf.getBean(ItemTextureManager.class)
         );
         bf.registerSingleton("gameScreen", gameScreen);
     }

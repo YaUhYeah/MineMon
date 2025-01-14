@@ -20,6 +20,7 @@ import io.github.minemon.input.InputConfiguration;
 import io.github.minemon.input.InputService;
 import io.github.minemon.inventory.service.InventoryService;
 import io.github.minemon.inventory.service.impl.InventoryServiceImpl;
+import io.github.minemon.inventory.service.impl.ItemPickupHandler;
 import io.github.minemon.inventory.service.impl.ItemTextureManager;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.multiplayer.service.ServerConnectionService;
@@ -166,15 +167,8 @@ public class DesktopConfig extends BaseGameConfig {
     }
 
     @Bean
-    public InputService inputService(InputConfiguration inputConfiguration,
-                                   ItemPickupHandler itemPickupHandler,
-                                   ChatService chatService,
-                                   MultiplayerClient multiplayerClient,
-                                   PlayerService playerService,
-                                   InventoryScreen inventoryScreen,
-                                   WorldService worldService) {
-        return new InputService(inputConfiguration, itemPickupHandler, chatService,
-                multiplayerClient, playerService, inventoryScreen, worldService);
+    public InputService inputService(InputConfiguration inputConfiguration) {
+        return new InputService(inputConfiguration);
     }
 
     @Bean
