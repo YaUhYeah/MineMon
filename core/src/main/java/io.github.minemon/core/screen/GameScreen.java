@@ -101,6 +101,10 @@ public class GameScreen implements Screen {
                       ChunkLoaderService chunkLoaderService,
                       ChunkPreloaderService chunkPreloaderService, PlayerAnimationService animationService, MultiplayerClient client,
                       ChunkLoadingManager chunkLoadingManager) {
+        camera = new OrthographicCamera();
+        batch = new SpriteBatch();
+        font = new BitmapFont();
+        initializeUI();
         this.playerService = playerService;
         this.worldService = worldService;
         this.audioService = audioService;
@@ -197,13 +201,9 @@ public class GameScreen implements Screen {
         float aspect = (float) Gdx.graphics.getHeight() / (float) Gdx.graphics.getWidth();
         float baseHeight = baseWidth * aspect;
 
-        camera = new OrthographicCamera();
         camera.setToOrtho(false, baseWidth, baseHeight);
         worldService.setCamera(camera);
 
-        batch = new SpriteBatch();
-        font = new BitmapFont();
-        initializeUI();
 
 
         multiplexer = new InputMultiplexer();
