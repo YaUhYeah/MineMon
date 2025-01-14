@@ -10,6 +10,7 @@ import io.github.minemon.world.service.WorldService;
 import io.github.minemon.world.service.impl.ObjectTextureManager;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -18,6 +19,7 @@ import java.util.*;
 
 @Component
 @Slf4j
+@Setter
 public class WorldRenderer {
     @Getter
     private boolean initialized = false;
@@ -57,13 +59,13 @@ public class WorldRenderer {
         initialized = false;
     }
 
-    
+
     public void render(OrthographicCamera camera, float delta) {
         if (!initialized || batch == null) {
             initialize();
         }
 
-        
+
         Rectangle viewBounds = calculateViewBounds();
         objectRenderState.clearInvisibleObjects(viewBounds);
 
@@ -72,16 +74,16 @@ public class WorldRenderer {
 
         treeTopQueue.clear();
 
-        
+
         renderGroundLayer();
 
-        
+
         renderBelowPlayerLayer(delta);
 
         batch.end();
     }
 
-    
+
     public void renderTreeTops(float delta) {
         if (treeTopQueue.isEmpty()) return;
 
@@ -103,13 +105,13 @@ public class WorldRenderer {
         Rectangle viewBounds = calculateViewBounds();
         List<WorldObject> objects = worldService.getVisibleObjects(viewBounds);
 
-        
+
         objects.stream()
             .filter(obj -> !isTreeType(obj.getType()))
             .sorted(Comparator.comparingInt(WorldObject::getTileY))
             .forEach(obj -> renderRegularObject(obj, delta));
 
-        
+
         objects.stream()
             .filter(obj -> isTreeType(obj.getType()))
             .sorted(Comparator.comparingInt(WorldObject::getTileY))
@@ -124,7 +126,7 @@ public class WorldRenderer {
             obj.getType().getTextureRegionName());
         if (texture == null) return;
 
-        
+
         objectRenderState.renderObject(batch, obj, texture, delta);
     }
     private void renderTreeBase(WorldObject tree, float delta) {
@@ -133,28 +135,28 @@ public class WorldRenderer {
         int totalW = full.getRegionWidth();
         int totalH = full.getRegionHeight();
 
-        
+
         int basePx = (int)(totalH * 0.7f);
         TextureRegion baseRegion = new TextureRegion(full, 0, totalH - basePx, totalW, basePx);
 
-        int tileW = tree.getType().getWidthInTiles();  
-        int tileH = tree.getType().getHeightInTiles(); 
+        int tileW = tree.getType().getWidthInTiles();
+        int tileH = tree.getType().getHeightInTiles();
 
-        int finalW = tileW * 32; 
-        int finalH = tileH * 32; 
+        int finalW = tileW * 32;
+        int finalH = tileH * 32;
 
-        
-        
+
+
         float drawX = tree.getTileX() * 32f;
         float drawY = tree.getTileY() * 32f;
 
-        
-        float baseHeight = finalH * 0.7f; 
 
-        
+        float baseHeight = finalH * 0.7f;
+
+
         objectRenderState.renderObject(batch, tree,
             baseRegion, delta,
-            drawX, drawY,  
+            drawX, drawY,
             finalW, baseHeight
         );
     }
@@ -167,25 +169,25 @@ public class WorldRenderer {
         int totalWidth  = fullTexture.getRegionWidth();
         int totalHeight = fullTexture.getRegionHeight();
 
-        
+
         int basePx = (int) (totalHeight * 0.7f);
-        int topPx  = totalHeight - basePx; 
+        int topPx  = totalHeight - basePx;
 
         TextureRegion topRegion = new TextureRegion(
             fullTexture,
             0,
-            0,          
+            0,
             totalWidth,
             topPx
         );
 
-        
-        int tileW = tree.getType().getWidthInTiles();    
-        int tileH = tree.getType().getHeightInTiles();   
-        int finalWidthPx  = tileW * TILE_SIZE;           
-        int finalHeightPx = tileH * TILE_SIZE;           
 
-        
+        int tileW = tree.getType().getWidthInTiles();
+        int tileH = tree.getType().getHeightInTiles();
+        int finalWidthPx  = tileW * TILE_SIZE;
+        int finalHeightPx = tileH * TILE_SIZE;
+
+
         int baseHeightPx = (int) (finalHeightPx * 0.7f);         int topHeightPx  = finalHeightPx - baseHeightPx;
 
         float drawX = tree.getTileX() * TILE_SIZE;
@@ -232,7 +234,7 @@ public class WorldRenderer {
         Rectangle viewBounds = calculateViewBounds();
         Map<String, ChunkData> visibleChunks = worldService.getVisibleChunks(viewBounds);
 
-        
+
         batch.setColor(VOID_COLOR);
         for (int x = (int) viewBounds.x; x < viewBounds.x + viewBounds.width; x += CHUNK_SIZE * TILE_SIZE) {
             for (int y = (int) viewBounds.y; y < viewBounds.y + viewBounds.height; y += CHUNK_SIZE * TILE_SIZE) {
@@ -240,7 +242,7 @@ public class WorldRenderer {
                 int chunkY = y / (CHUNK_SIZE * TILE_SIZE);
                 String key = chunkX + "," + chunkY;
                 if (!visibleChunks.containsKey(key)) {
-                    
+
                     batch.draw(tileManager.getRegionForTile(0), x, y,
                         CHUNK_SIZE * TILE_SIZE, CHUNK_SIZE * TILE_SIZE);
                 }
@@ -248,7 +250,7 @@ public class WorldRenderer {
         }
         batch.setColor(Color.WHITE);
 
-        
+
         for (ChunkData chunk : visibleChunks.values()) {
             renderChunk(chunk);
         }
@@ -292,7 +294,7 @@ public class WorldRenderer {
         private final float width;
         private final float height;
 
-        
+
         private final WorldObject sourceObject;
     }
 }

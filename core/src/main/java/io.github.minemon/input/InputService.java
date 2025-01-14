@@ -12,13 +12,10 @@ import io.github.minemon.player.model.PlayerDirection;
 import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.model.ObjectType;
 import io.github.minemon.world.model.WorldObject;
-import io.github.minemon.world.service.WorldObjectManager;
 import io.github.minemon.world.service.WorldService;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -59,29 +56,6 @@ public class InputService extends InputAdapter {
     private InventoryScreen inventoryScreen;
     private WorldService worldService;
 
-    public void setItemPickupHandler(ItemPickupHandler itemPickupHandler) {
-        this.itemPickupHandler = itemPickupHandler;
-    }
-
-    public void setChatService(ChatService chatService) {
-        this.chatService = chatService;
-    }
-
-    public void setMultiplayerClient(MultiplayerClient multiplayerClient) {
-        this.multiplayerClient = multiplayerClient;
-    }
-
-    public void setPlayerService(PlayerService playerService) {
-        this.playerService = playerService;
-    }
-
-    public void setInventoryScreen(InventoryScreen inventoryScreen) {
-        this.inventoryScreen = inventoryScreen;
-    }
-
-    public void setWorldService(WorldService worldService) {
-        this.worldService = worldService;
-    }
 
     public void activate() {
         isActive = true;

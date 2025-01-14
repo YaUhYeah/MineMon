@@ -7,6 +7,7 @@ import io.github.minemon.player.model.PlayerData;
 import io.github.minemon.world.model.ChunkData;
 import io.github.minemon.world.model.WorldData;
 import io.github.minemon.world.service.WorldService;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Primary;
@@ -25,11 +26,8 @@ import java.util.List;
 public class AndroidJsonWorldDataService extends JsonWorldDataService {
     private final Json json;
 
+    @Setter
     private WorldService worldService;
-
-    public void setWorldService(WorldService worldService) {
-        this.worldService = worldService;
-    }
 
     public AndroidJsonWorldDataService() {
         super("", true); // Base path will be handled by LibGDX
@@ -140,7 +138,7 @@ public class AndroidJsonWorldDataService extends JsonWorldDataService {
             if (!file.parent().exists()) {
                 file.parent().mkdirs();
             }
-            
+
             String jsonStr = json.toJson(chunkData);
             file.writeString(jsonStr, false);
         }

@@ -17,6 +17,7 @@ import io.github.minemon.core.service.*;
 import io.github.minemon.core.service.impl.AndroidAssetManager;
 import io.github.minemon.core.service.impl.ScreenManagerImpl;
 import io.github.minemon.core.ui.HotbarUI;
+import io.github.minemon.event.EventBus;
 import io.github.minemon.input.AndroidTouchInput;
 import io.github.minemon.input.InputConfiguration;
 import io.github.minemon.input.InputService;
@@ -29,6 +30,7 @@ import io.github.minemon.multiplayer.service.impl.ServerConnectionServiceImpl;
 import io.github.minemon.player.service.PlayerAnimationService;
 import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.biome.service.BiomeService;
+import io.github.minemon.world.model.ObjectRenderState;
 import io.github.minemon.world.model.WorldRenderer;
 import io.github.minemon.world.service.*;
 import io.github.minemon.world.service.impl.*;
@@ -276,6 +278,8 @@ public class AndroidGameContext {
             register(uiService);
             register(UiService.class, uiService);
 
+            AudioServiceImpl audioService = new AudioServiceImpl();
+            register(audioService);
             BackgroundService backgroundService = new BackgroundService();
             register(backgroundService);
             register(BackgroundService.class, backgroundService);
@@ -343,7 +347,7 @@ public class AndroidGameContext {
                 biomeLoader,
                 biomeService,
                 objectTextureManager,
-                jsonWorldDataService, 
+                jsonWorldDataService,
                 fileAccessService
             );
             register(worldService);
@@ -359,11 +363,27 @@ public class AndroidGameContext {
             ChunkLoaderService chunkLoaderService = new ChunkLoaderService(worldService);
             register(chunkLoaderService);
             register(ChunkLoaderService.class, chunkLoaderService);
-
+            ObjectRenderState objectRenderState = new ObjectRenderState();
+            register(objectRenderState);
+            register(ObjectRenderState.class, objectRenderState);
             ChunkPreloaderService chunkPreloaderService = new ChunkPreloaderService(worldService);
             register(chunkPreloaderService);
             register(ChunkPreloaderService.class, chunkPreloaderService);
+            ApplicationEventPublisher eventPublisher = getBean(ApplicationEventPublisher.class);
+            AndroidApplicationContext applicationContext = new AndroidApplicationContext(eventPublisher);
+            ScreenManagerImpl screenManager = new ScreenManagerImpl(applicationContext, getBean(GdxGame.class));
+            register(screenManager);
 
+            WorldRenderer worldRenderer = new WorldRenderer(
+                getBean(WorldService.class),
+                getBean(TileManager.class),
+                getBean(ObjectTextureManager.class)
+            );
+            worldRenderer.setObjectRenderState(getBean(ObjectRenderState.class));
+            register(worldRenderer);
+
+            EventBus eventBus = new EventBus();
+            register(eventBus);
             // Initialize player animation
             PlayerAnimationServiceImpl playerAnimationService = new PlayerAnimationServiceImpl();
             register(playerAnimationService);
@@ -374,21 +394,20 @@ public class AndroidGameContext {
             register(chatService);
             register(ChatService.class, chatService);
 
-            // Initialize screens
             InventoryScreen inventoryScreen = new InventoryScreen(
-                inventoryService,
-                itemTextureManager,
-                uiService
+                getBean(InventoryService.class),
+                getBean(UiService.class),
+                getBean(InputService.class)
             );
             register(InventoryScreen.class, inventoryScreen);
 
             WorldSelectionScreen worldSelectionScreen = new WorldSelectionScreen(
-                worldService,
-                screenManager,
-                uiService,
-                backgroundService
+                getBean(AudioService.class),
+                getBean(WorldService.class),
+                screenManager
             );
             register(WorldSelectionScreen.class, worldSelectionScreen);
+
 
             ModeSelectionScreen modeSelectionScreen = new ModeSelectionScreen(
                 getBean(AudioService.class),
@@ -417,92 +436,15 @@ public class AndroidGameContext {
                 worldService,
                 inventoryService
             );
+            playerService.setEventBus(getBean(EventBus.class));
             register(playerService);
             register(PlayerService.class, playerService);
-
+            HotbarUI hotbarUI = new HotbarUI(getBean(UiService.class), getBean(InventoryService.class), getBean(ItemTextureManager.class));
+            register(hotbarUI);
             // Set player service in input service now that it's created
             inputService.setPlayerService(playerService);
 
             // Initialize game screen
-            GameScreen gameScreen = new GameScreen(
-                playerService,
-                worldService,
-                getBean(AudioService.class),
-                inputService,
-                screenManager,
-                chatService,
-                biomeService,
-                worldRenderer,
-                chunkLoaderService,
-                chunkPreloaderService,
-                playerAnimationService,
-                multiplayerClient,
-                chunkLoadingManager
-            );
-            gameScreen.setInventoryScreen(inventoryScreen);
-            gameScreen.setConnectionManager(connectionManager);
-            gameScreen.setItemTextureManager(itemTextureManager);
-            register(GameScreen.class, gameScreen);
-
-
-            ChunkLoadingManager chunkLoadingManager = new ChunkLoadingManager();
-            chunkLoadingManager.setWorldService(getBean(WorldService.class));
-            chunkLoadingManager.setMultiplayerClient(getBean(MultiplayerClient.class));
-            register(chunkLoadingManager);
-
-            AudioServiceImpl audioService = new AudioServiceImpl();
-            register(audioService);
-            WorldRenderer worldRenderer = new WorldRenderer(
-                getBean(WorldService.class),
-                getBean(TileManager.class),
-                getBean(ObjectTextureManager.class)
-            );
-            register(worldRenderer);
-            ServerConnectionService serverConnectionService = new ServerConnectionServiceImpl(fileAccessService);
-
-
-            ChatServiceImpl chatService = new ChatServiceImpl(
-                playerService,
-                multiplayerClient,
-                commandService
-            );
-            register(chatService);
-
-            ApplicationEventPublisher eventPublisher = getBean(ApplicationEventPublisher.class);
-            AndroidApplicationContext applicationContext = new AndroidApplicationContext(eventPublisher);
-            register(ApplicationContext.class, applicationContext);
-            ItemTextureManager itemTextureManager = new ItemTextureManager();
-            register(ItemTextureManager.class, itemTextureManager);
-
-            ScreenManagerImpl screenManager = new ScreenManagerImpl(applicationContext, getBean(GdxGame.class));
-            register(screenManager);
-            ChunkLoaderService chunkLoaderService = new ChunkLoaderService(getBean(WorldService.class));
-            register(chunkLoaderService);
-            ChunkPreloaderService chunkPreloaderService = new ChunkPreloaderService(getBean(WorldService.class));
-            register(chunkPreloaderService);
-            ClientConnectionManager clientConnectionManager = new ClientConnectionManager();
-            register(clientConnectionManager);
-
-            HotbarUI hotbarUI = new HotbarUI(getBean(UiService.class), getBean(InventoryService.class), getBean(ItemTextureManager.class));
-            register(hotbarUI);
-            // Register all screens
-            ModeSelectionScreen modeSelectionScreen = new ModeSelectionScreen(
-                getBean(AudioService.class),
-                screenManager,
-                getBean(SettingsService.class),
-                getBean(BackgroundService.class)
-            );
-            modeSelectionScreen.setMultiplayerClient(getBean(MultiplayerClient.class));
-            modeSelectionScreen.setWorldService(getBean(WorldService.class));
-
-            register(ModeSelectionScreen.class, modeSelectionScreen);
-
-            InventoryScreen inventoryScreen = new InventoryScreen(
-                getBean(InventoryService.class),
-                getBean(UiService.class),
-                getBean(InputService.class)
-            );
-            register(InventoryScreen.class, inventoryScreen);
             GameScreen gameScreen = new GameScreen(
                 getBean(PlayerService.class),
                 getBean(WorldService.class),
@@ -525,12 +467,16 @@ public class AndroidGameContext {
             gameScreen.setConnectionManager(getBean(ClientConnectionManager.class));
             register(GameScreen.class, gameScreen);
 
-            WorldSelectionScreen worldSelectionScreen = new WorldSelectionScreen(
-                getBean(AudioService.class),
-                getBean(WorldService.class),
-                screenManager
-            );
-            register(WorldSelectionScreen.class, worldSelectionScreen);
+
+            ServerConnectionService serverConnectionService = new ServerConnectionServiceImpl(fileAccessService);
+
+
+            register(ApplicationContext.class, applicationContext);
+
+            register(chunkLoaderService);
+            register(chunkPreloaderService);
+            ClientConnectionManager clientConnectionManager = new ClientConnectionManager();
+            register(clientConnectionManager);
 
             LoginScreen loginScreen = new LoginScreen(
                 getBean(AudioService.class),
