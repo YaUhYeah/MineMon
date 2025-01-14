@@ -28,7 +28,7 @@ allprojects {
   }
 }
 
-configure(subprojects - project(':android')) {
+configure(subprojects) {
   apply plugin: 'java-library'
   sourceCompatibility = 17
 
@@ -64,7 +64,6 @@ subprojects {
   version = '1.0'
   ext.appName = 'MineMon'
   configurations.configureEach {
-    exclude group: 'ch.qos.logback', module: 'logback-classic'
     exclude group: 'org.springframework', module: 'spring-jcl'
   }
   

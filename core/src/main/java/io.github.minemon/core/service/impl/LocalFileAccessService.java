@@ -11,7 +11,8 @@ public class LocalFileAccessService implements FileAccessService {
 
     private FileHandle getFileHandle(String path) {
         if (Gdx.files == null) {
-            throw new IllegalStateException("LibGDX not initialized");
+            // Return a temporary file handle for initialization
+            return new FileHandle(path);
         }
 
         if (isAndroid()) {
@@ -72,7 +73,8 @@ public class LocalFileAccessService implements FileAccessService {
     @Override
     public void ensureDirectoryExists(String path) {
         if (Gdx.files == null) {
-            throw new IllegalStateException("LibGDX not initialized");
+            // Skip directory creation during initialization
+            return;
         }
 
         FileHandle dir = getFileHandle(path);
@@ -93,7 +95,8 @@ public class LocalFileAccessService implements FileAccessService {
     @Override
     public String getBasePath() {
         if (Gdx.files == null) {
-            throw new IllegalStateException("LibGDX not initialized");
+            // Return current directory during initialization
+            return ".";
         }
 
         if (isAndroid()) {
@@ -108,7 +111,8 @@ public class LocalFileAccessService implements FileAccessService {
     @Override
     public boolean exists(String path) {
         if (Gdx.files == null) {
-            throw new IllegalStateException("LibGDX not initialized");
+            // Return false during initialization
+            return false;
         }
         return getFileHandle(path).exists();
     }
@@ -117,7 +121,8 @@ public class LocalFileAccessService implements FileAccessService {
     public String readFile(String path) {
         try {
             if (Gdx.files == null) {
-                throw new IllegalStateException("LibGDX not initialized");
+                // Return empty string during initialization
+                return "";
             }
 
             FileHandle fileHandle = getFileHandle(path);

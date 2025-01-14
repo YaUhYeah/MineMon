@@ -228,12 +228,16 @@ public class GameApplicationContext {
     }
 
     private static void initDesktopContext() {
-
-        AnnotationConfigApplicationContext desktopCtx = new AnnotationConfigApplicationContext();
-        desktopCtx.scan("io.github.minemon");
-        desktopCtx.refresh();
-        context = desktopCtx;
-        log.info("Desktop context initialized with component scanning");
+        try {
+            AnnotationConfigApplicationContext desktopCtx = new AnnotationConfigApplicationContext();
+            desktopCtx.register(io.github.minemon.core.config.DesktopConfig.class);
+            desktopCtx.refresh();
+            context = desktopCtx;
+            log.info("Desktop context initialized successfully");
+        } catch (Exception e) {
+            log.error("Failed to initialize desktop context", e);
+            throw new RuntimeException("Failed to initialize desktop context", e);
+        }
     }
 
     public static ApplicationContext getContext() {
