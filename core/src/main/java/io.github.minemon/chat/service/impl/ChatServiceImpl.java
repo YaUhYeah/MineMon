@@ -24,9 +24,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class ChatServiceImpl implements ChatService {
 
     private final PlayerService playerService;
-    @Autowired
-    @Lazy
     private MultiplayerClient multiplayerClient;
+
+    public void setMultiplayerClient(MultiplayerClient multiplayerClient) {
+        this.multiplayerClient = multiplayerClient;
+    }
     private final CommandService commandService;
     private final ConcurrentLinkedQueue<ChatMessage> messages = new ConcurrentLinkedQueue<>();
     private final List<String> messageHistory = new ArrayList<>();

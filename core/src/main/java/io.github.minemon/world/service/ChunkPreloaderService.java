@@ -29,12 +29,16 @@ public class ChunkPreloaderService {
     private final Set<Vector2> preloadedChunks = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Set<Vector2> failedRequests = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Queue<Vector2> urgentChunkQueue = new LinkedList<>();
-    @Autowired
-    @Lazy
     private ChunkLoadingManager chunkLoadingManager;
-    @Autowired
-    @Lazy
     private MultiplayerClient client;
+
+    public void setChunkLoadingManager(ChunkLoadingManager chunkLoadingManager) {
+        this.chunkLoadingManager = chunkLoadingManager;
+    }
+
+    public void setMultiplayerClient(MultiplayerClient client) {
+        this.client = client;
+    }
 
     public ChunkPreloaderService(WorldService worldService) {
         this.worldService = worldService;

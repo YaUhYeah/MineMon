@@ -108,16 +108,25 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     }
     private boolean initialized = false;
     @Autowired
-    @Lazy
     private MultiplayerClient multiplayerClient;
+
+    public void setMultiplayerClient(MultiplayerClient multiplayerClient) {
+        this.multiplayerClient = multiplayerClient;
+    }
     private boolean isMultiplayerMode = false;
     private boolean disconnectHandled = false;
     @Autowired
-    @Lazy
     private ChunkLoadingManager chunkLoadingManager;
+
+    public void setChunkLoadingManager(ChunkLoadingManager chunkLoadingManager) {
+        this.chunkLoadingManager = chunkLoadingManager;
+    }
     @Autowired
-    @Lazy
     private PlayerService playerService;
+
+    public void setPlayerService(PlayerService playerService) {
+        this.playerService = playerService;
+    }
 
     public ClientWorldServiceImpl(
         WorldConfig worldConfig,

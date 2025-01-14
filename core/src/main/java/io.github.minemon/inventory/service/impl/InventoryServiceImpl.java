@@ -27,19 +27,26 @@ public class InventoryServiceImpl implements InventoryService {
     @Getter
     private final Map<String, InventoryItem> itemRegistry = new HashMap<>();
     private final List<InventorySlot> slots = new ArrayList<>(DEFAULT_INVENTORY_SIZE);
-    @Autowired
-    @Lazy
     private PlayerService playerService;
-    @Autowired
-    @Lazy
     private WorldService worldService;
-
-    @Autowired
-    @Lazy
     private MultiplayerClient multiplayerClient;
-    @Autowired
-    @Lazy
     private EventBus eventBus;
+
+    public void setPlayerService(PlayerService playerService) {
+        this.playerService = playerService;
+    }
+
+    public void setWorldService(WorldService worldService) {
+        this.worldService = worldService;
+    }
+
+    public void setMultiplayerClient(MultiplayerClient multiplayerClient) {
+        this.multiplayerClient = multiplayerClient;
+    }
+
+    public void setEventBus(EventBus eventBus) {
+        this.eventBus = eventBus;
+    }
     public InventoryServiceImpl() {
         for (int i = 0; i < DEFAULT_INVENTORY_SIZE; i++) {
             slots.add(new InventorySlot());

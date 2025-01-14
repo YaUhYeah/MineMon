@@ -159,6 +159,7 @@ public class AndroidInitializer {
                 "data/biomes.json",
                 "Skins/uiskin.json",
                 "atlas/items-gfx-atlas.atlas",
+                "atlas/tiles-gfx-atlas.atlas",
                 "atlas/ui-gfx-atlas.atlas",
                 "shaders/menu_background.vert",
                 "shaders/menu_background.frag"

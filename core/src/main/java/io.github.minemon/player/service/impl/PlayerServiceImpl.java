@@ -17,12 +17,14 @@ import io.github.minemon.player.service.PlayerService;
 import io.github.minemon.world.model.WorldObject;
 import io.github.minemon.world.service.ChunkLoadingManager;
 import io.github.minemon.world.service.WorldService;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
 
 @Slf4j
+@Setter
 public class PlayerServiceImpl implements PlayerService {
     public final int TILE_SIZE = 32;
 
@@ -64,7 +66,7 @@ public class PlayerServiceImpl implements PlayerService {
 
     @Override
     public void move(PlayerDirection direction) {
-        
+
         if (playerModel.isMoving()) {
             log.debug("Currently moving. Buffering direction: {}", direction);
             this.bufferedDirection = direction;
@@ -78,7 +80,7 @@ public class PlayerServiceImpl implements PlayerService {
         int currentTileX = (int) (currentX / tileSize);
         int currentTileY = (int) (currentY / tileSize);
 
-        
+
         int targetTileX = currentTileX;
         int targetTileY = currentTileY;
         switch (direction) {
@@ -88,18 +90,18 @@ public class PlayerServiceImpl implements PlayerService {
             case RIGHT -> targetTileX += 1;
         }
 
-        
+
         playerModel.setDirection(direction);
 
         if (isColliding(targetTileX, targetTileY)) {
             log.debug("Collision at ({}, {}): no movement, but direction updated to {}",
                 targetTileX, targetTileY, direction);
-            
+
             playerModel.setMoving(false);
             return;
         }
 
-        
+
         playerModel.setRunning(inputService.isRunning());
         float targetX = targetTileX * tileSize;
         float targetY = targetTileY * tileSize;
@@ -110,10 +112,10 @@ public class PlayerServiceImpl implements PlayerService {
         float duration = playerModel.isRunning() ? runStepDuration : walkStepDuration;
         playerModel.setMovementDuration(duration);
 
-        
-        
 
-        
+
+
+
         playerModel.setMovementTime(0f);
 
         playerModel.setMoving(true);
@@ -131,7 +133,7 @@ public class PlayerServiceImpl implements PlayerService {
         int chunkX = tileX / 16;
         int chunkY = tileY / 16;
 
-        
+
         int[][] chunkTiles = worldService.getChunkTiles(chunkX, chunkY);
         if (chunkTiles == null) return true;
 
@@ -144,21 +146,21 @@ public class PlayerServiceImpl implements PlayerService {
             return true;
         }
 
-        
+
         float tileSize = TILE_SIZE;
         Rectangle targetTileRect = new Rectangle(tileX * tileSize, tileY * tileSize, tileSize, tileSize);
 
-        
+
         Rectangle searchBounds = new Rectangle(
-            (tileX - 1) * tileSize,  
-            (tileY - 1) * tileSize,  
-            tileSize * 3,            
-            tileSize * 3             
+            (tileX - 1) * tileSize,
+            (tileY - 1) * tileSize,
+            tileSize * 3,
+            tileSize * 3
         );
 
         List<WorldObject> nearbyObjects = worldService.getVisibleObjects(searchBounds);
 
-        
+
         for (WorldObject obj : nearbyObjects) {
             if (!obj.isCollidable()) continue;
             Rectangle collisionBox = obj.getCollisionBox();
@@ -191,7 +193,7 @@ public class PlayerServiceImpl implements PlayerService {
                 playerModel.setMoving(false);
                 playerModel.setPosition(playerModel.getTargetPosition().x, playerModel.getTargetPosition().y);
 
-                
+
                 PlayerData pd = getPlayerData();
                 worldService.setPlayerData(pd);
                 multiplayerClient.sendPlayerMove(
@@ -266,7 +268,7 @@ public class PlayerServiceImpl implements PlayerService {
         pd.setMoving(playerModel.isMoving());
         pd.setWantsToRun(playerModel.isRunning());
 
-        
+
         pd.setInventoryData(inventoryService.serializeInventory());
 
         return pd;

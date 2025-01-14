@@ -38,8 +38,6 @@ public class InventoryScreen {
 
     private final InventoryService inventoryService;
     private final UiService uiService;
-    @Autowired
-    @Lazy
     private final InputService inputService;
 
     private Stage stage;
