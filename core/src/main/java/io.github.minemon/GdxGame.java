@@ -43,110 +43,141 @@ public class GdxGame extends Game {
     @Override
     public void create() {
         try {
-            log.info("GdxGame.create() called on platform: {}", isAndroid ? "Android" : "Desktop");
+            String platform = getPlatformName();
+            log.info("GdxGame.create() called on platform: {}", platform);
 
-            // Wait for graphics context to be ready
-            int attempts = 0;
-            while (Gdx.gl == null && attempts < 10) {
-                try {
-                    Thread.sleep(100);
-                    attempts++;
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
+            // Wait for graphics context with timeout
+            if (!waitForGraphicsContext()) {
+                throw new RuntimeException("Graphics context initialization timeout");
             }
 
-            // Verify LibGDX initialization
-            if (Gdx.app == null || Gdx.graphics == null) {
-                throw new RuntimeException("LibGDX not properly initialized");
-            }
+            // Get appropriate application context
+            ApplicationContext context = getApplicationContext();
+            initializeServices(context);
 
-            // Get application context based on platform
-            ApplicationContext context;
-            if (isAndroid) {
-                // On Android, use AndroidGameContext
-                if (!AndroidGameContext.isRegistered(ApplicationContext.class)) {
-                    throw new RuntimeException("Android context not initialized. Make sure AndroidGameContext.initMinimal() is called first.");
-                }
-                context = AndroidGameContext.getBean(ApplicationContext.class);
-            } else {
-                // On desktop, use GameApplicationContext
-                context = GameApplicationContext.getContext();
-            }
-            if (context == null) {
-                throw new RuntimeException("Application context is null");
-            }
+            // Show initial screen safely
+            showInitialScreen(context);
 
-            // Initialize core services in a safe order
-            log.info("Initializing core services...");
-            try {
-                context.getBean(SettingsService.class).initialize();
-            } catch (Exception e) {
-                log.error("Failed to initialize SettingsService", e);
-                throw e;
-            }
-
-            try {
-                context.getBean(UiService.class).initialize();
-            } catch (Exception e) {
-                log.error("Failed to initialize UiService", e);
-                throw e;
-            }
-
-            // Initialize Android-specific UI if needed
-            if (isAndroid) {
-                try {
-                    AndroidTouchInput touchInput = context.getBean(AndroidTouchInput.class);
-                    touchInput.initialize(AndroidUIFactory.createTouchpadStyle());
-                } catch (Exception e) {
-                    log.error("Failed to initialize Android touch input", e);
-                    // Don't throw here, app can still work without touch input
-                }
-            }
-
-            log.info("Initializing world services...");
-            context.getBean(TileManager.class).initIfNeeded();
-            context.getBean(WorldObjectManager.class).initialize();
-            context.getBean(WorldService.class).initIfNeeded();
-            context.getBean(ObjectTextureManager.class).initializeIfNeeded();
-
-            log.info("Initializing game services...");
-            try {
-                context.getBean(PlayerAnimationService.class).initAnimationsIfNeeded();
-            } catch (Exception e) {
-                log.error("Failed to initialize player animations", e);
-            }
-            try {
-                context.getBean(AudioService.class).initAudio();
-            } catch (Exception e) {
-                log.error("Failed to initialize audio", e);
-            }
-            try {
-                context.getBean(BiomeService.class).init();
-            } catch (Exception e) {
-                log.error("Failed to initialize biomes", e);
-            }
-
-
-            log.info("Showing initial screen...");
-            ScreenManager screenManager = context.getBean(ScreenManager.class);
-
-            if (screenManager == null) {
-                throw new RuntimeException("Screen manager is null");
-            }
-            Gdx.app.postRunnable(() -> {
-                try {
-                    screenManager.showScreen(ModeSelectionScreen.class);
-                } catch (Exception e) {
-                    log.error("Failed to show initial screen", e);
-                }
-            });
+            log.info("Game initialization completed successfully on {}", platform);
 
         } catch (Exception e) {
             log.error("Failed to initialize game: {}", e.getMessage(), e);
             throw new RuntimeException("Game initialization failed", e);
         }
+    }
+
+    private String getPlatformName() {
+        if (isAndroid) return "Android";
+        if (Gdx.app.getType() == Application.ApplicationType.iOS) return "iOS";
+        if (Gdx.app.getType() == Application.ApplicationType.WebGL) return "WebGL";
+        return "Desktop";
+    }
+
+    private boolean waitForGraphicsContext() {
+        int attempts = 0;
+        while (Gdx.gl == null && attempts < 20) {  // Increased timeout
+            try {
+                Thread.sleep(100);
+                attempts++;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return Gdx.app != null && Gdx.graphics != null && Gdx.gl != null;
+    }
+
+    private ApplicationContext getApplicationContext() {
+        ApplicationContext context;
+        if (isAndroid) {
+            if (!AndroidGameContext.isRegistered(ApplicationContext.class)) {
+                throw new RuntimeException("Android context not initialized");
+            }
+            context = AndroidGameContext.getBean(ApplicationContext.class);
+        } else {
+            context = GameApplicationContext.getContext();
+        }
+        if (context == null) {
+            throw new RuntimeException("Application context is null");
+        }
+        return context;
+    }
+
+    private void initializeServices(ApplicationContext context) {
+        // Core services
+        initializeService("SettingsService", () -> 
+            context.getBean(SettingsService.class).initialize());
+        
+        initializeService("UiService", () -> 
+            context.getBean(UiService.class).initialize());
+
+        // Platform-specific initialization
+        if (isAndroid) {
+            initializeAndroidServices(context);
+        }
+
+        // World services
+        log.info("Initializing world services...");
+        initializeService("TileManager", () -> 
+            context.getBean(TileManager.class).initIfNeeded());
+        initializeService("WorldObjectManager", () -> 
+            context.getBean(WorldObjectManager.class).initialize());
+        initializeService("WorldService", () -> 
+            context.getBean(WorldService.class).initIfNeeded());
+        initializeService("ObjectTextureManager", () -> 
+            context.getBean(ObjectTextureManager.class).initializeIfNeeded());
+
+        // Game services
+        log.info("Initializing game services...");
+        initializeService("PlayerAnimationService", () -> 
+            context.getBean(PlayerAnimationService.class).initAnimationsIfNeeded());
+        initializeService("AudioService", () -> 
+            context.getBean(AudioService.class).initAudio());
+        initializeService("BiomeService", () -> 
+            context.getBean(BiomeService.class).init());
+    }
+
+    private void initializeService(String serviceName, Runnable initializer) {
+        try {
+            initializer.run();
+        } catch (Exception e) {
+            log.error("Failed to initialize {}: {}", serviceName, e.getMessage());
+            if (isRequiredService(serviceName)) {
+                throw e;
+            }
+        }
+    }
+
+    private boolean isRequiredService(String serviceName) {
+        return serviceName.equals("SettingsService") || 
+               serviceName.equals("UiService") ||
+               serviceName.equals("WorldService") ||
+               serviceName.equals("TileManager");
+    }
+
+    private void initializeAndroidServices(ApplicationContext context) {
+        try {
+            AndroidTouchInput touchInput = context.getBean(AndroidTouchInput.class);
+            touchInput.initialize(AndroidUIFactory.createTouchpadStyle());
+        } catch (Exception e) {
+            log.error("Failed to initialize Android touch input", e);
+        }
+    }
+
+    private void showInitialScreen(ApplicationContext context) {
+        ScreenManager screenManager = context.getBean(ScreenManager.class);
+        if (screenManager == null) {
+            throw new RuntimeException("Screen manager is null");
+        }
+
+        Gdx.app.postRunnable(() -> {
+            try {
+                screenManager.showScreen(ModeSelectionScreen.class);
+            } catch (Exception e) {
+                log.error("Failed to show initial screen", e);
+                throw new RuntimeException("Failed to show initial screen", e);
+            }
+        });
     }
 
     private AndroidTouchInput touchInput;

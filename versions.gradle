@@ -1,6 +1,27 @@
 ext {
-  gdxVersion = "1.13.0"
-  springVersion = "3.1.4"
-  lombokVersion = "1.18.30"
-  graalHelperVersion = "0.1.0"
+    // Core versions
+    gdxVersion = "1.13.0"
+    springVersion = "3.1.4"
+    lombokVersion = "1.18.30"
+    graalHelperVersion = "0.1.0"
+    
+    // Additional dependencies
+    kryonetVersion = "2.22.0-RC1"
+    h2Version = "2.2.224"
+    slf4jVersion = "2.0.9"
+    logbackVersion = "1.4.11"
+    jakartaAnnotationVersion = "2.1.1"
+    
+    // Android specific
+    androidGradlePluginVersion = "8.7.3"
+    androidMinSdkVersion = 21
+    androidTargetSdkVersion = 34
+    androidCompileSdkVersion = 34
+    
+    // iOS specific
+    roboVMVersion = "2.3.20"
+    
+    // HTML/GWT specific
+    gwtPluginVersion = "1.1.19"
+    gwtVersion = "2.10.0"
 }
