@@ -7,10 +7,8 @@ import io.github.minemon.chat.service.ChatService;
 import io.github.minemon.chat.service.impl.ChatServiceImpl;
 import io.github.minemon.chat.service.impl.CommandServiceImpl;
 import io.github.minemon.core.config.GameConfig;
-import io.github.minemon.core.screen.GameScreen;
-import io.github.minemon.core.screen.LoginScreen;
-import io.github.minemon.core.screen.ModeSelectionScreen;
-import io.github.minemon.core.screen.WorldSelectionScreen;
+import io.github.minemon.core.screen.*;
+import io.github.minemon.inventory.service.impl.ItemPickupHandler;
 import io.github.minemon.core.service.*;
 import io.github.minemon.core.service.impl.LocalFileAccessService;
 import io.github.minemon.core.service.impl.ScreenManagerImpl;
@@ -146,7 +144,15 @@ public class GameApplicationContext {
 
 
         bf.registerSingleton("inputService",
-            new InputService(bf.getBean(InputConfiguration.class))
+            new InputService(
+                bf.getBean(InputConfiguration.class),
+                bf.getBean(ItemPickupHandler.class),
+                bf.getBean(ChatService.class),
+                bf.getBean(MultiplayerClient.class),
+                bf.getBean(PlayerService.class),
+                bf.getBean(InventoryScreen.class),
+                bf.getBean(WorldService.class)
+            )
         );
         bf.registerSingleton("playerAnimationService", new PlayerAnimationServiceImpl());
         bf.registerSingleton("inventoryService", new InventoryServiceImpl());

@@ -170,8 +170,24 @@ public class AndroidConfig extends BaseGameConfig {
     }
 
     @Bean
-    public InputService inputService(InputConfiguration inputConfiguration) {
-        InputService service = new InputService(inputConfiguration);
+    public InputService inputService(
+        InputConfiguration inputConfiguration,
+        ItemPickupHandler itemPickupHandler,
+        ChatService chatService,
+        MultiplayerClient multiplayerClient,
+        PlayerService playerService,
+        InventoryScreen inventoryScreen,
+        WorldService worldService
+    ) {
+        InputService service = new InputService(
+            inputConfiguration,
+            itemPickupHandler,
+            chatService,
+            multiplayerClient,
+            playerService,
+            inventoryScreen,
+            worldService
+        );
         service.setAndroidMode(true);
         return service;
     }

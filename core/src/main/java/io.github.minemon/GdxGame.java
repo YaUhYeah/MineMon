@@ -2,6 +2,7 @@ package io.github.minemon;
 
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.Application;
 import io.github.minemon.audio.service.AudioService;
 import io.github.minemon.context.GameApplicationContext;
 import io.github.minemon.context.AndroidGameContext;

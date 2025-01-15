@@ -167,8 +167,24 @@ public class DesktopConfig extends BaseGameConfig {
     }
 
     @Bean
-    public InputService inputService(InputConfiguration inputConfiguration) {
-        return new InputService(inputConfiguration);
+    public InputService inputService(
+        InputConfiguration inputConfiguration,
+        ItemPickupHandler itemPickupHandler,
+        ChatService chatService,
+        MultiplayerClient multiplayerClient,
+        PlayerService playerService,
+        InventoryScreen inventoryScreen,
+        WorldService worldService
+    ) {
+        return new InputService(
+            inputConfiguration,
+            itemPickupHandler,
+            chatService,
+            multiplayerClient,
+            playerService,
+            inventoryScreen,
+            worldService
+        );
     }
 
     @Bean

@@ -1,6 +1,7 @@
 package io.github.minemon.ios;
 
 import io.github.minemon.GdxGame;
+import io.github.minemon.context.GameApplicationContext;
 import org.robovm.apple.foundation.NSAutoreleasePool;
 import org.robovm.apple.uikit.UIApplication;
 

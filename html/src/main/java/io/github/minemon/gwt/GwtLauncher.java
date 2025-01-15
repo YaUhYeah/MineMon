@@ -3,7 +3,9 @@ package io.github.minemon.gwt;
 import com.badlogic.gdx.ApplicationListener;
 import com.badlogic.gdx.backends.gwt.GwtApplication;
 import com.badlogic.gdx.backends.gwt.GwtApplicationConfiguration;
+import com.google.gwt.core.client.GWT;
 import io.github.minemon.GdxGame;
+import io.github.minemon.context.GameApplicationContext;
 
 
 public class GwtLauncher extends GwtApplication {
