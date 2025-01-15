@@ -68,8 +68,7 @@ public class GameScreen implements Screen {
     private boolean handlingDisconnect = false;
     private OrthographicCamera camera;
     private SpriteBatch batch;
-    @Setter
-    private ClientConnectionManager connectionManager;
+    private final ClientConnectionManager connectionManager;
     private BitmapFont font;
     private Stage pauseStage;
     private Skin pauseSkin;
@@ -103,7 +102,8 @@ public class GameScreen implements Screen {
                       PlayerAnimationService animationService,
                       MultiplayerClient client,
                       ChunkLoadingManager chunkLoadingManager,
-                      ItemTextureManager itemTextureManager) {
+                      ItemTextureManager itemTextureManager,
+                      ClientConnectionManager connectionManager) {
         this.playerService = playerService;
         this.worldService = worldService;
         this.audioService = audioService;
@@ -117,6 +117,7 @@ public class GameScreen implements Screen {
         this.multiplayerClient = client;
         this.chunkLoadingManager = chunkLoadingManager;
         this.itemTextureManager = itemTextureManager;
+        this.connectionManager = connectionManager;
     }
 
     private void handleDisconnection() {
@@ -741,7 +742,9 @@ public class GameScreen implements Screen {
         worldService.setMultiplayerMode(false);
 
 
-        connectionManager.releaseInstanceLock();
+        if (connectionManager != null) {
+            connectionManager.releaseInstanceLock();
+        }
 
 
         screenManager.showScreen(ModeSelectionScreen.class);
