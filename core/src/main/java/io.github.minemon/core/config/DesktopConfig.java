@@ -20,7 +20,9 @@ import io.github.minemon.input.InputConfiguration;
 import io.github.minemon.input.InputService;
 import io.github.minemon.inventory.service.InventoryService;
 import io.github.minemon.inventory.service.impl.InventoryServiceImpl;
+import io.github.minemon.inventory.service.InventoryService;
 import io.github.minemon.inventory.service.impl.ItemPickupHandler;
+import io.github.minemon.inventory.service.impl.ItemSpawnService;
 import io.github.minemon.inventory.service.impl.ItemTextureManager;
 import io.github.minemon.multiplayer.service.MultiplayerClient;
 import io.github.minemon.multiplayer.service.ServerConnectionService;
@@ -44,6 +46,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 @Configuration
 public class DesktopConfig extends BaseGameConfig {
@@ -162,13 +165,38 @@ public class DesktopConfig extends BaseGameConfig {
     }
 
     @Bean
+    public ItemSpawnService itemSpawnService(
+        WorldService worldService,
+        WorldObjectManager worldObjectManager,
+        MultiplayerClient multiplayerClient
+    ) {
+        return new ItemSpawnService(worldService, worldObjectManager, multiplayerClient);
+    }
+
+    @Bean
     public ItemPickupHandler itemPickupHandler() {
         return new ItemPickupHandler();
     }
 
     @Bean
-    public InputService inputService(InputConfiguration inputConfiguration) {
-        return new InputService(inputConfiguration);
+    public InputService inputService(
+        InputConfiguration inputConfiguration,
+        ItemPickupHandler itemPickupHandler,
+        ChatService chatService,
+        MultiplayerClient multiplayerClient,
+        @Lazy PlayerService playerService,
+        InventoryScreen inventoryScreen,
+        @Lazy WorldService worldService
+    ) {
+        return new InputService(
+            inputConfiguration,
+            itemPickupHandler,
+            chatService,
+            multiplayerClient,
+            playerService,
+            inventoryScreen,
+            worldService
+        );
     }
 
     @Bean
@@ -242,9 +270,18 @@ public class DesktopConfig extends BaseGameConfig {
     }
 
     @Bean
-    public ChatService chatService(PlayerService playerService, MultiplayerClient multiplayerClient,
+    public ChatService chatService(MultiplayerClient multiplayerClient,
                                  CommandServiceImpl commandService) {
-        return new ChatServiceImpl((PlayerServiceImpl) playerService,
+        // Create a temporary PlayerService for ChatService
+        // The real PlayerService will be injected later
+        PlayerServiceImpl tempPlayerService = new PlayerServiceImpl(
+            new PlayerAnimationServiceImpl(),
+            null,  // InputService will be injected later
+            new PlayerProperties(),
+            null,  // WorldService will be injected later
+            new InventoryServiceImpl()
+        );
+        return new ChatServiceImpl(tempPlayerService,
                 (MultiplayerClientImpl) multiplayerClient, commandService);
     }
 
@@ -272,7 +309,7 @@ public class DesktopConfig extends BaseGameConfig {
     @Bean
     public InventoryScreen inventoryScreen(InventoryService inventoryService,
                                          UiService uiService,
-                                         InputService inputService) {
+                                         @Lazy InputService inputService) {
         return new InventoryScreen(inventoryService, uiService, inputService);
     }
 

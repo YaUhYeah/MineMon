@@ -139,7 +139,16 @@ public class AndroidGameContext {
             InputConfiguration inputConfig = new InputConfiguration();
             register(inputConfig);
 
-            InputService inputService = new InputService(inputConfig);
+            // Create input service with null dependencies initially
+            InputService inputService = new InputService(
+                inputConfig,
+                null, // ItemPickupHandler will be set later
+                null, // ChatService will be set later
+                null, // MultiplayerClient will be set later
+                null, // PlayerService will be set later
+                null, // InventoryScreen will be set later
+                null  // WorldService will be set later
+            );
             register(inputService);
 
             AndroidTouchInput touchInput = new AndroidTouchInput(inputService);
@@ -421,12 +430,7 @@ public class AndroidGameContext {
 
             // Initialize input service with all required dependencies
             InputService inputService = getBean(InputService.class);
-            inputService.setChatService(chatService);
-            inputService.setInventoryScreen(inventoryScreen);
-            inputService.setMultiplayerClient(multiplayerClient);
-            inputService.setWorldService(worldService);
-            inputService.setPlayerService(null); // Will be set after PlayerService is created
-            inputService.setItemPickupHandler(null); // Will be set later
+            // Services are now injected via constructor
 
             // Initialize player service
             PlayerServiceImpl playerService = new PlayerServiceImpl(
@@ -442,7 +446,7 @@ public class AndroidGameContext {
             HotbarUI hotbarUI = new HotbarUI(getBean(UiService.class), getBean(InventoryService.class), getBean(ItemTextureManager.class));
             register(hotbarUI);
             // Set player service in input service now that it's created
-            inputService.setPlayerService(playerService);
+            // Player service is now injected via constructor
 
             // Initialize game screen
             GameScreen gameScreen = new GameScreen(
@@ -533,7 +537,16 @@ public class AndroidGameContext {
         FileAccessService fileAccessService = new LocalFileAccessService();
         register(fileAccessService);
 
-        InputService inputService = new InputService(inputConfig);
+        // Create input service with null dependencies initially
+        InputService inputService = new InputService(
+            inputConfig,
+            null, // ItemPickupHandler will be set later
+            null, // ChatService will be set later
+            null, // MultiplayerClient will be set later
+            null, // PlayerService will be set later
+            null, // InventoryScreen will be set later
+            null  // WorldService will be set later
+        );
         register(inputService);
 
         SettingsService settingsService = new SettingsService(inputConfig);
