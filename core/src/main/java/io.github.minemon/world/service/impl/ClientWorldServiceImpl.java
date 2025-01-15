@@ -35,6 +35,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import java.util.ArrayList;
 
 @Slf4j
 @Service
@@ -124,8 +125,15 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
     @Autowired
     private PlayerService playerService;
 
+    @Autowired
+    private InputService inputService;
+
     public void setPlayerService(PlayerService playerService) {
         this.playerService = playerService;
+    }
+
+    public void setInputService(InputService inputService) {
+        this.inputService = inputService;
     }
 
     public ClientWorldServiceImpl(
@@ -324,19 +332,27 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     @Override
     public void loadWorld(String worldName) {
-
         disconnectHandled = false;
 
+        // Reset input service before clearing world data
+        if (inputService != null) {
+            inputService.deactivate();
+            inputService.resetKeys();
+        }
 
         clearWorldData();
-
-
         setMultiplayerMode(false);
 
         try {
             jsonWorldDataService.loadWorld(worldName, worldData);
             worldData.setLastPlayed(System.currentTimeMillis());
             initIfNeeded();
+
+            // Reactivate input service after world is loaded
+            if (inputService != null) {
+                inputService.activate();
+            }
+
             log.info("Loaded singleplayer world data for world: {}", worldName);
         } catch (IOException e) {
             log.error("Failed to load world '{}': {}", worldName, e.getMessage());
@@ -477,16 +493,13 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
 
     @Override
     public boolean createWorld(String worldName, long seed) {
-
         if (jsonWorldDataService.worldExists(worldName)) {
             log.warn("World '{}' already exists, cannot create", worldName);
             return false;
         }
 
-
         worldData.getChunks().clear();
         worldData.getPlayers().clear();
-
 
         long now = System.currentTimeMillis();
         worldData.setWorldName(worldName);
@@ -496,8 +509,64 @@ public class ClientWorldServiceImpl extends BaseWorldServiceImpl implements Worl
         worldData.setPlayedTime(0);
 
         try {
+            // Initialize world generator and biome service with the new seed
+            initIfNeeded();
+
+            // Create world directory structure first
+            FileHandle worldDir;
+            if (isAndroid()) {
+                worldDir = Gdx.files.external(getActualSaveDir() + worldName);
+            } else {
+                worldDir = Gdx.files.local(getActualSaveDir() + worldName);
+            }
+            worldDir.mkdirs();
+            worldDir.child("chunks").mkdirs();
+            worldDir.child("playerdata").mkdirs();
+
+            // Generate and save initial chunks around spawn point (3x3 area)
+            int spawnChunkX = 0;
+            int spawnChunkY = 0;
+            int radius = 1; // This will create a 3x3 area of chunks
+
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dy = -radius; dy <= radius; dy++) {
+                    int chunkX = spawnChunkX + dx;
+                    int chunkY = spawnChunkY + dy;
+                    
+                    // Generate chunk tiles
+                    int[][] tiles = worldGenerator.generateChunk(chunkX, chunkY);
+                    
+                    // Create and save chunk data
+                    ChunkData chunkData = new ChunkData();
+                    chunkData.setChunkX(chunkX);
+                    chunkData.setChunkY(chunkY);
+                    chunkData.setTiles(tiles);
+                    chunkData.setObjects(new ArrayList<>());
+                    
+                    // Add to world data and save to disk
+                    String chunkKey = chunkX + "," + chunkY;
+                    worldData.getChunks().put(chunkKey, chunkData);
+                    
+                    try {
+                        jsonWorldDataService.saveChunk(worldName, chunkData);
+                        log.debug("Generated and saved chunk {},{} for new world '{}'", chunkX, chunkY, worldName);
+                    } catch (IOException e) {
+                        log.error("Failed to save chunk {},{} for world '{}': {}", chunkX, chunkY, worldName, e.getMessage());
+                        // Continue with other chunks even if one fails
+                    }
+                }
+            }
+
+            // Save the world metadata
             jsonWorldDataService.saveWorld(worldData);
-            log.info("Created new world '{}' with seed {}", worldName, seed);
+            log.info("Created new world '{}' with seed {} and generated initial chunks", worldName, seed);
+            
+            // Force chunk loading manager to recognize the new chunks
+            if (chunkLoadingManager != null) {
+                chunkLoadingManager.clearCache();
+                chunkLoadingManager.preloadChunksAroundPosition(0, 0);
+            }
+            
             return true;
         } catch (IOException e) {
             log.error("Failed to create world '{}': {} (saveDir={})", worldName, e.getMessage(), getActualSaveDir());

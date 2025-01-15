@@ -98,6 +98,17 @@ public class InputService extends InputAdapter {
         rightPressed = false;
         runPressed = false;
         lastPressedDirection = null;
+        
+        // Ensure platform-specific input is reset
+        if (isAndroid && Gdx.input != null) {
+            // Reset any active touch inputs
+            for (int i = 0; i < 20; i++) {
+                if (Gdx.input.isTouched(i)) {
+                    // Simulate touch up to clear any stuck touches
+                    touchUp(0, 0, i, 0);
+                }
+            }
+        }
     }
     @Override
     public boolean keyDown(int keycode) {
